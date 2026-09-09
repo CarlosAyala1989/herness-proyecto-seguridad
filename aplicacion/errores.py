@@ -122,6 +122,29 @@ class ErrorConfirmacionRequerida(ErrorHermes):
         )
 
 
+class ErrorSeleccionServidoresVacia(ErrorHermes):
+    """Impide iniciar una operación múltiple sin destinos resolubles."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La selección no contiene servidores sobre los que se pueda operar.",
+            codigo="seleccion_servidores_vacia",
+            estado_http=HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
+
+
+class ErrorLimiteSeleccionServidores(ErrorHermes):
+    """Acota la cantidad de destinos aceptados en una sola solicitud."""
+
+    def __init__(self, maximo: int) -> None:
+        super().__init__(
+            "La selección supera el máximo de servidores permitido por solicitud.",
+            codigo="limite_seleccion_servidores_superado",
+            estado_http=HTTPStatus.UNPROCESSABLE_ENTITY,
+            detalles=[{"maximo_servidores": maximo}],
+        )
+
+
 def _identificador_solicitud(solicitud: Request) -> str:
     return getattr(solicitud.state, "identificador_solicitud", "no_disponible")
 

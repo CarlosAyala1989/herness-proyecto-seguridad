@@ -7,14 +7,17 @@ from fastapi import APIRouter, Path, Request
 from aplicacion.dependencias import SesionActual
 from aplicacion.esquemas.acciones import (
     AccionDisponibleRespuesta,
+    ResultadoAccionMultipleRespuesta,
     ResultadoAccionRespuesta,
     SolicitudEjecucionAccion,
+    SolicitudEjecucionMultiple,
 )
 from aplicacion.seguridad.autenticacion import UsuarioActual
 from aplicacion.servicios.gestor_acciones import (
     ejecutar_accion_servidor,
     listar_acciones_para_usuario,
 )
+from aplicacion.servicios.gestor_acciones_multiples import ejecutar_accion_multiple
 
 enrutador = APIRouter(prefix="/api/v1", tags=["acciones"])
 IdentificadorServidor = Annotated[int, Path(gt=0)]
@@ -45,6 +48,31 @@ async def ejecutar_accion(
     return await ejecutar_accion_servidor(
         sesion,
         id_servidor,
+        codigo_accion,
+        datos,
+        usuario,
+        solicitud,
+        solicitud.app.state.fabrica_transporte_remoto,
+        solicitud.app.state.configuracion,
+    )
+
+
+@enrutador.post(
+    "/acciones-multiples/{codigo_accion}",
+    response_model=ResultadoAccionMultipleRespuesta,
+)
+async def ejecutar_accion_sobre_seleccion(
+    codigo_accion: CodigoAccionRuta,
+    datos: SolicitudEjecucionMultiple,
+    solicitud: Request,
+    sesion: SesionActual,
+    usuario: UsuarioActual,
+) -> ResultadoAccionMultipleRespuesta:
+    """Ejecuta una acción común con aislamiento y concurrencia acotada."""
+
+    return await ejecutar_accion_multiple(
+        sesion,
+        solicitud.app.state.fabrica_sesiones,
         codigo_accion,
         datos,
         usuario,

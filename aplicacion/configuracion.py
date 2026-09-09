@@ -44,6 +44,9 @@ class Configuracion(BaseSettings):
     limite_salida_ssh_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
     intervalo_mantenimiento_ssh_segundos: float = Field(default=15.0, gt=0, le=300)
     max_intentos_mantenimiento_ssh: int = Field(default=3, ge=1, le=10)
+    max_concurrencia_acciones_multiples: int = Field(default=4, ge=1, le=32)
+    max_servidores_accion_multiple: int = Field(default=100, ge=1, le=500)
+    tiempo_limite_accion_multiple_segundos: float = Field(default=45.0, gt=0, le=600)
 
     telegram_habilitado: bool = False
     token_telegram: SecretStr | None = None
