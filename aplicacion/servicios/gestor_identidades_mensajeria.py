@@ -1,5 +1,7 @@
 """Vinculación y autenticación de identidades de mensajería."""
 
+import re
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,8 @@ from aplicacion.modelos.enumeraciones import (
 )
 from aplicacion.modelos.identidad_mensajeria import IdentidadMensajeria
 from aplicacion.servicios.auditoria import ContextoAuditoria, preparar_registro_auditoria
+
+PATRON_IDENTIFICADOR_SLACK = re.compile(r"^[A-Z][A-Z0-9]{1,31}$")
 
 
 async def obtener_usuario_por_identidad(
@@ -156,6 +160,124 @@ async def desactivar_identidad_telegram(
         id_recurso=identidad.id_usuario,
         resultado=ResultadoAuditoria.EXITO,
         detalle="Identidad de Telegram desactivada mediante administración local.",
+        canal=CanalAuditoria.SISTEMA,
+    )
+    await sesion.commit()
+
+
+def construir_identificador_slack(
+    identificador_equipo: str,
+    identificador_usuario: str,
+) -> str:
+    """Combina espacio de trabajo y usuario para evitar colisiones entre equipos."""
+
+    equipo = identificador_equipo.strip().upper()
+    usuario = identificador_usuario.strip().upper()
+    if not PATRON_IDENTIFICADOR_SLACK.fullmatch(equipo):
+        raise ErrorConflictoDatos("El identificador del espacio de trabajo Slack no es válido.")
+    if not PATRON_IDENTIFICADOR_SLACK.fullmatch(usuario):
+        raise ErrorConflictoDatos("El identificador del usuario Slack no es válido.")
+    return f"{equipo}:{usuario}"
+
+
+async def vincular_identidad_slack(
+    sesion: AsyncSession,
+    nombre_usuario: str,
+    identificador_equipo: str,
+    identificador_usuario: str,
+    nombre_slack: str | None = None,
+) -> IdentidadMensajeria:
+    """Crea o actualiza el único vínculo Slack de un usuario Hermes."""
+
+    identificador = construir_identificador_slack(
+        identificador_equipo,
+        identificador_usuario,
+    )
+    nombre_normalizado = nombre_slack.strip() if nombre_slack else None
+    if nombre_normalizado and (
+        len(nombre_normalizado) > 100 or not nombre_normalizado.isprintable()
+    ):
+        raise ErrorConflictoDatos("El nombre de Slack no es válido.")
+    usuario = await sesion.scalar(
+        select(Usuario).where(Usuario.nombre_usuario == nombre_usuario.strip().lower())
+    )
+    if usuario is None:
+        raise ErrorRecursoNoEncontrado("usuario")
+
+    identidad_en_uso = await sesion.scalar(
+        select(IdentidadMensajeria).where(
+            IdentidadMensajeria.canal == TipoCanalMensajeria.SLACK,
+            IdentidadMensajeria.identificador_externo == identificador,
+        )
+    )
+    if identidad_en_uso is not None and identidad_en_uso.id_usuario != usuario.id_usuario:
+        raise ErrorConflictoDatos("La identidad de Slack ya está vinculada.")
+
+    identidad = await sesion.scalar(
+        select(IdentidadMensajeria).where(
+            IdentidadMensajeria.id_usuario == usuario.id_usuario,
+            IdentidadMensajeria.canal == TipoCanalMensajeria.SLACK,
+        )
+    )
+    if identidad is None:
+        identidad = IdentidadMensajeria(
+            usuario=usuario,
+            canal=TipoCanalMensajeria.SLACK,
+            identificador_externo=identificador,
+            nombre_externo=nombre_normalizado,
+            activo=True,
+        )
+        sesion.add(identidad)
+    else:
+        identidad.identificador_externo = identificador
+        identidad.nombre_externo = nombre_normalizado
+        identidad.activo = True
+
+    preparar_registro_auditoria(
+        sesion,
+        usuario=None,
+        accion="vincular_identidad_slack",
+        tipo_recurso=TipoRecursoAuditoria.USUARIO,
+        id_recurso=usuario.id_usuario,
+        resultado=ResultadoAuditoria.EXITO,
+        detalle="Identidad de Slack vinculada mediante administración local.",
+        canal=CanalAuditoria.SISTEMA,
+    )
+    try:
+        await sesion.commit()
+    except IntegrityError:
+        await sesion.rollback()
+        raise ErrorConflictoDatos("No fue posible vincular la identidad de Slack.") from None
+    await sesion.refresh(identidad)
+    return identidad
+
+
+async def desactivar_identidad_slack(
+    sesion: AsyncSession,
+    nombre_usuario: str,
+) -> None:
+    """Revoca el acceso de Slack sin desactivar otros canales ni el usuario."""
+
+    consulta = (
+        select(IdentidadMensajeria)
+        .join(IdentidadMensajeria.usuario)
+        .where(
+            Usuario.nombre_usuario == nombre_usuario.strip().lower(),
+            IdentidadMensajeria.canal == TipoCanalMensajeria.SLACK,
+        )
+    )
+    identidad = await sesion.scalar(consulta)
+    if identidad is None:
+        raise ErrorRecursoNoEncontrado("identidad de Slack")
+    identidad.activo = False
+    preparar_registro_auditoria(
+        sesion,
+        usuario=None,
+        accion="desactivar_identidad_slack",
+        tipo_recurso=TipoRecursoAuditoria.USUARIO,
+        id_recurso=identidad.id_usuario,
+        resultado=ResultadoAuditoria.EXITO,
+        detalle="Identidad de Slack desactivada mediante administración local.",
         canal=CanalAuditoria.SISTEMA,
     )
     await sesion.commit()

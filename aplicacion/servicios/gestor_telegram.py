@@ -31,30 +31,42 @@ from aplicacion.servicios.gestor_inventario import (
 )
 
 
-class GestorTelegram:
-    """Expone casos de uso comunes sin incluir objetos propios de Telegram."""
+class GestorMensajeria:
+    """Expone casos de uso comunes sin incluir objetos propios de cada canal."""
 
     def __init__(
         self,
         fabrica_sesiones: async_sessionmaker[AsyncSession],
         fabrica_transporte: FabricaTransporteRemoto,
         configuracion: Configuracion,
+        tipo_canal: TipoCanalMensajeria,
+        canal_auditoria: CanalAuditoria,
+        prefijo_solicitud: str,
+        max_servidores_mostrados: int,
     ) -> None:
         self._fabrica_sesiones = fabrica_sesiones
         self._fabrica_transporte = fabrica_transporte
         self._configuracion = configuracion
+        self._tipo_canal = tipo_canal
+        self._canal_auditoria = canal_auditoria
+        self._prefijo_solicitud = prefijo_solicitud
+        self._max_servidores_mostrados = max_servidores_mostrados
 
-    @staticmethod
     def crear_contexto(
+        self,
         identificador_telegram: int,
         identificador_actualizacion: int,
     ) -> ContextoAuditoria:
         """Convierte identificadores numéricos en metadatos de auditoría acotados."""
 
         return ContextoAuditoria(
-            canal=CanalAuditoria.TELEGRAM,
-            direccion_origen=f"telegram:{identificador_telegram}",
-            identificador_solicitud=f"tg:{identificador_actualizacion}",
+            canal=self._canal_auditoria,
+            direccion_origen=(
+                f"{self._tipo_canal.value}:{identificador_telegram}"
+            )[:45],
+            identificador_solicitud=(
+                f"{self._prefijo_solicitud}:{identificador_actualizacion}"
+            )[:36],
         )
 
     async def _autenticar(
@@ -65,7 +77,7 @@ class GestorTelegram:
     ) -> Usuario:
         return await obtener_usuario_por_identidad(
             sesion,
-            TipoCanalMensajeria.TELEGRAM,
+            self._tipo_canal,
             str(identificador_telegram),
             contexto,
         )
@@ -102,7 +114,7 @@ class GestorTelegram:
             servidores = await listar_servidores(
                 sesion,
                 desplazamiento=0,
-                limite=self._configuracion.max_servidores_mostrados_telegram,
+                limite=self._max_servidores_mostrados,
                 solo_activos=True,
             )
             return [ServidorResumen.model_validate(servidor) for servidor in servidores]
@@ -150,7 +162,7 @@ class GestorTelegram:
             grupos = await listar_grupos(
                 sesion,
                 desplazamiento=0,
-                limite=self._configuracion.max_servidores_mostrados_telegram,
+                limite=self._max_servidores_mostrados,
             )
             return [GrupoDetalle.model_validate(grupo) for grupo in grupos]
 
@@ -285,3 +297,23 @@ class GestorTelegram:
                 ids_servidores=[objetivo.id_servidor for objetivo in objetivos]
             )
             return seleccion_fijada, len(objetivos)
+
+
+class GestorTelegram(GestorMensajeria):
+    """Configura la fachada común para identidades y auditoría de Telegram."""
+
+    def __init__(
+        self,
+        fabrica_sesiones: async_sessionmaker[AsyncSession],
+        fabrica_transporte: FabricaTransporteRemoto,
+        configuracion: Configuracion,
+    ) -> None:
+        super().__init__(
+            fabrica_sesiones,
+            fabrica_transporte,
+            configuracion,
+            TipoCanalMensajeria.TELEGRAM,
+            CanalAuditoria.TELEGRAM,
+            "tg",
+            configuracion.max_servidores_mostrados_telegram,
+        )

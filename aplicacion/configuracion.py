@@ -53,6 +53,12 @@ class Configuracion(BaseSettings):
     tiempo_confirmacion_telegram_segundos: int = Field(default=60, ge=30, le=300)
     max_servidores_mostrados_telegram: int = Field(default=50, ge=1, le=100)
 
+    slack_habilitado: bool = False
+    token_bot_slack: SecretStr | None = None
+    token_aplicacion_slack: SecretStr | None = None
+    tiempo_confirmacion_slack_segundos: int = Field(default=60, ge=30, le=300)
+    max_servidores_mostrados_slack: int = Field(default=50, ge=1, le=100)
+
     @model_validator(mode="after")
     def validar_configuracion_telegram(self) -> "Configuracion":
         """Exige un token no vacío únicamente cuando Telegram está habilitado."""
@@ -61,6 +67,34 @@ class Configuracion(BaseSettings):
             token = self.token_telegram.get_secret_value() if self.token_telegram else ""
             if len(token) < 20 or ":" not in token or any(caracter.isspace() for caracter in token):
                 raise ValueError("Telegram está habilitado pero su token no es válido.")
+        return self
+
+    @model_validator(mode="after")
+    def validar_configuracion_slack(self) -> "Configuracion":
+        """Exige los dos tokens de Socket Mode solo al habilitar Slack."""
+
+        if not self.slack_habilitado:
+            return self
+        token_bot = self.token_bot_slack.get_secret_value() if self.token_bot_slack else ""
+        token_aplicacion = (
+            self.token_aplicacion_slack.get_secret_value()
+            if self.token_aplicacion_slack
+            else ""
+        )
+        if (
+            not token_bot.startswith("xoxb-")
+            or len(token_bot) < 20
+            or any(caracter.isspace() for caracter in token_bot)
+        ):
+            raise ValueError("Slack está habilitado pero el token del bot no es válido.")
+        if (
+            not token_aplicacion.startswith("xapp-")
+            or len(token_aplicacion) < 20
+            or any(caracter.isspace() for caracter in token_aplicacion)
+        ):
+            raise ValueError(
+                "Slack está habilitado pero el token de aplicación no es válido."
+            )
         return self
 
     def construir_url_base_datos(self) -> URL:
