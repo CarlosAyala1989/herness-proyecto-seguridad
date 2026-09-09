@@ -11,10 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from aplicacion.acciones.registro import CodigoAccion
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import ErrorIdentidadMensajeriaNoAutorizada
-from aplicacion.esquemas.acciones import ResultadoAccionRespuesta
+from aplicacion.esquemas.acciones import (
+    ResultadoAccionMultipleRespuesta,
+    ResultadoAccionRespuesta,
+    ResultadoServidorAccionMultiple,
+    SeleccionServidores,
+)
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.telegram.bot import (
     CLAVE_CONFIRMACION_REINICIO,
+    CLAVE_SELECCION_SERVIDORES,
     CLAVE_SERVIDOR_SELECCIONADO,
     InterfazTelegram,
     crear_aplicacion_telegram,
@@ -148,6 +154,36 @@ def _resultado(codigo: CodigoAccion) -> ResultadoAccionRespuesta:
     )
 
 
+def _resultado_multiple(codigo: CodigoAccion) -> ResultadoAccionMultipleRespuesta:
+    return ResultadoAccionMultipleRespuesta(
+        accion=codigo,
+        estado="completada_con_errores",
+        total_servidores=2,
+        servidores_completados=1,
+        servidores_fallidos=1,
+        duracion_ms=25,
+        resultados=[
+            ResultadoServidorAccionMultiple(
+                id_servidor=7,
+                nombre_servidor="ubuntu-laboratorio",
+                sistema_operativo=SistemaOperativo.LINUX,
+                estado="completada",
+                datos={"usuario": "operador", "nombre_equipo": "ubuntu-laboratorio"},
+                duracion_ms=12,
+            ),
+            ResultadoServidorAccionMultiple(
+                id_servidor=8,
+                nombre_servidor="windows-desconectado",
+                sistema_operativo=SistemaOperativo.WINDOWS_SERVER,
+                estado="error",
+                codigo_error="servidor_ssh_no_disponible",
+                mensaje_error="El servidor no está disponible mediante SSH.",
+                duracion_ms=13,
+            ),
+        ],
+    )
+
+
 @pytest.mark.asyncio
 async def test_rechaza_identidad_no_vinculada_e_informa_su_identificador(
     interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
@@ -206,6 +242,57 @@ async def test_lista_selecciona_y_ejecuta_identidad(
     datos = gestor.ejecutar_accion.await_args.args[4]
     assert datos.parametros == {}
     assert datos.confirmar is False
+
+
+@pytest.mark.asyncio
+async def test_selecciona_grupo_y_consolida_resultados_individuales(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_seleccion_multiple.return_value = 2
+    gestor.ejecutar_accion_multiple.return_value = _resultado_multiple(
+        CodigoAccion.OBTENER_IDENTIDAD
+    )
+    mensaje = MensajeSimulado()
+    contexto = _contexto("12")
+
+    await interfaz.seleccionar_grupo_por_comando(_actualizacion(mensaje), contexto)
+
+    seleccion = contexto.user_data[CLAVE_SELECCION_SERVIDORES]
+    assert seleccion.id_grupo == 12
+    assert CLAVE_SERVIDOR_SELECCIONADO not in contexto.user_data
+
+    await interfaz.obtener_identidad(_actualizacion(mensaje), contexto)
+
+    textos = "\n".join(texto for texto, _ in mensaje.respuestas)
+    assert "Completados: 1" in textos
+    assert "ubuntu-laboratorio: completada" in textos
+    assert "windows-desconectado: El servidor no está disponible" in textos
+    solicitud = gestor.ejecutar_accion_multiple.await_args.args[3]
+    assert solicitud.seleccion.id_grupo == 12
+    gestor.ejecutar_accion.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_selecciona_todos_sin_aceptar_argumentos(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_seleccion_multiple.return_value = 4
+    mensaje = MensajeSimulado()
+    contexto = _contexto()
+
+    await interfaz.seleccionar_todos(_actualizacion(mensaje), contexto)
+
+    seleccion = contexto.user_data[CLAVE_SELECCION_SERVIDORES]
+    assert seleccion.todos is True
+    assert "todos los servidores activos (4)" in mensaje.respuestas[-1][0]
+
+    await interfaz.seleccionar_todos(_actualizacion(mensaje), _contexto("adicional"))
+    assert mensaje.respuestas[-1][0] == "Uso correcto: /seleccionar_todos."
+    assert gestor.comprobar_seleccion_multiple.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -350,6 +437,42 @@ async def test_gestion_servicio_exige_confirmacion_ligada_y_de_un_solo_uso(
     )
     assert "no es válida o ha caducado" in mensaje.respuestas[-1][0]
     assert gestor.ejecutar_accion.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_confirmacion_multiple_fija_destinos_antes_de_ejecutar(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_accion_sensible_multiple.return_value = (
+        SeleccionServidores(ids_servidores=[7, 8]),
+        2,
+    )
+    gestor.ejecutar_accion_multiple.return_value = _resultado_multiple(
+        CodigoAccion.REINICIAR_SERVICIO
+    )
+    mensaje = MensajeSimulado()
+    contexto = _contexto("ssh.service")
+    contexto.user_data[CLAVE_SELECCION_SERVIDORES] = SeleccionServidores(id_grupo=12)
+
+    await interfaz.reiniciar_servicio(_actualizacion(mensaje), contexto)
+
+    assert "2 servidores" in mensaje.respuestas[-1][0]
+    assert "destinos ya quedaron fijados" in mensaje.respuestas[-1][0]
+    datos_boton = mensaje.respuestas[-1][1].inline_keyboard[0][0].callback_data
+    await interfaz.resolver_accion_sensible(
+        _actualizacion(
+            mensaje,
+            id_actualizacion=905,
+            consulta=ConsultaBotonSimulada(datos_boton),
+        ),
+        contexto,
+    )
+
+    solicitud = gestor.ejecutar_accion_multiple.await_args.args[3]
+    assert solicitud.seleccion.ids_servidores == [7, 8]
+    assert solicitud.confirmar is True
 
 
 @pytest.mark.asyncio

@@ -5,16 +5,30 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aplicacion.acciones.registro import obtener_definicion_accion
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import ErrorServidorInactivo
-from aplicacion.esquemas.acciones import ResultadoAccionRespuesta, SolicitudEjecucionAccion
-from aplicacion.esquemas.inventario import ServidorResumen
+from aplicacion.esquemas.acciones import (
+    ResultadoAccionMultipleRespuesta,
+    ResultadoAccionRespuesta,
+    SeleccionServidores,
+    SolicitudEjecucionAccion,
+    SolicitudEjecucionMultiple,
+)
+from aplicacion.esquemas.inventario import GrupoDetalle, ServidorResumen
 from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import CanalAuditoria, TipoCanalMensajeria
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
 from aplicacion.servicios.auditoria import ContextoAuditoria
 from aplicacion.servicios.gestor_acciones import ejecutar_accion_servidor
+from aplicacion.servicios.gestor_acciones_multiples import (
+    ejecutar_accion_multiple,
+    resolver_objetivos_accion_multiple,
+)
 from aplicacion.servicios.gestor_conexiones import FabricaTransporteRemoto
 from aplicacion.servicios.gestor_identidades_mensajeria import obtener_usuario_por_identidad
-from aplicacion.servicios.gestor_inventario import listar_servidores, obtener_servidor
+from aplicacion.servicios.gestor_inventario import (
+    listar_grupos,
+    listar_servidores,
+    obtener_servidor,
+)
 
 
 class GestorTelegram:
@@ -116,6 +130,55 @@ class GestorTelegram:
                 raise ErrorServidorInactivo()
             return ServidorResumen.model_validate(servidor)
 
+    async def consultar_grupos(
+        self,
+        identificador_telegram: int,
+        identificador_actualizacion: int,
+    ) -> list[GrupoDetalle]:
+        """Lista grupos después de aplicar autenticación y permiso de inventario."""
+
+        contexto = self.crear_contexto(identificador_telegram, identificador_actualizacion)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_telegram, contexto)
+            await comprobar_permiso_usuario(
+                sesion,
+                None,
+                usuario,
+                "consultar_inventario",
+                contexto,
+            )
+            grupos = await listar_grupos(
+                sesion,
+                desplazamiento=0,
+                limite=self._configuracion.max_servidores_mostrados_telegram,
+            )
+            return [GrupoDetalle.model_validate(grupo) for grupo in grupos]
+
+    async def comprobar_seleccion_multiple(
+        self,
+        identificador_telegram: int,
+        identificador_actualizacion: int,
+        seleccion: SeleccionServidores,
+    ) -> int:
+        """Valida una selección dinámica antes de conservarla en la conversación."""
+
+        contexto = self.crear_contexto(identificador_telegram, identificador_actualizacion)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_telegram, contexto)
+            await comprobar_permiso_usuario(
+                sesion,
+                None,
+                usuario,
+                "consultar_inventario",
+                contexto,
+            )
+            objetivos = await resolver_objetivos_accion_multiple(
+                sesion,
+                seleccion,
+                self._configuracion.max_servidores_accion_multiple,
+            )
+            return len(objetivos)
+
     async def ejecutar_accion(
         self,
         identificador_telegram: int,
@@ -132,6 +195,30 @@ class GestorTelegram:
             return await ejecutar_accion_servidor(
                 sesion,
                 id_servidor,
+                codigo_accion,
+                datos,
+                usuario,
+                None,
+                self._fabrica_transporte,
+                self._configuracion,
+                contexto,
+            )
+
+    async def ejecutar_accion_multiple(
+        self,
+        identificador_telegram: int,
+        identificador_actualizacion: int,
+        codigo_accion: str,
+        datos: SolicitudEjecucionMultiple,
+    ) -> ResultadoAccionMultipleRespuesta:
+        """Reutiliza el orquestador común y marca cada auditoría como Telegram."""
+
+        contexto = self.crear_contexto(identificador_telegram, identificador_actualizacion)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_telegram, contexto)
+            return await ejecutar_accion_multiple(
+                sesion,
+                self._fabrica_sesiones,
                 codigo_accion,
                 datos,
                 usuario,
@@ -167,3 +254,34 @@ class GestorTelegram:
             if not servidor.activo:
                 raise ErrorServidorInactivo()
             return ServidorResumen.model_validate(servidor)
+
+    async def comprobar_accion_sensible_multiple(
+        self,
+        identificador_telegram: int,
+        identificador_actualizacion: int,
+        codigo_accion: str,
+        datos: SolicitudEjecucionMultiple,
+    ) -> tuple[SeleccionServidores, int]:
+        """Autoriza una acción sensible y fija sus miembros antes de confirmar."""
+
+        contexto = self.crear_contexto(identificador_telegram, identificador_actualizacion)
+        definicion = obtener_definicion_accion(codigo_accion)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_telegram, contexto)
+            await comprobar_permiso_usuario(
+                sesion,
+                None,
+                usuario,
+                definicion.codigo_permiso,
+                contexto,
+            )
+            definicion.validar_parametros(datos.parametros)
+            objetivos = await resolver_objetivos_accion_multiple(
+                sesion,
+                datos.seleccion,
+                self._configuracion.max_servidores_accion_multiple,
+            )
+            seleccion_fijada = SeleccionServidores(
+                ids_servidores=[objetivo.id_servidor for objetivo in objetivos]
+            )
+            return seleccion_fijada, len(objetivos)

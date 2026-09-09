@@ -22,6 +22,7 @@ from aplicacion.errores import (
 from aplicacion.esquemas.acciones import (
     ResultadoAccionMultipleRespuesta,
     ResultadoServidorAccionMultiple,
+    SeleccionServidores,
     SolicitudEjecucionMultiple,
 )
 from aplicacion.modelos.acceso import Rol, Usuario
@@ -50,12 +51,13 @@ class ObjetivoAccionMultiple:
     existe: bool = True
 
 
-async def _resolver_objetivos(
+async def resolver_objetivos_accion_multiple(
     sesion: AsyncSession,
-    datos: SolicitudEjecucionMultiple,
+    seleccion: SeleccionServidores,
     maximo_servidores: int,
 ) -> list[ObjetivoAccionMultiple]:
-    seleccion = datos.seleccion
+    """Resuelve una selección dinámica y aplica el límite de seguridad solicitado."""
+
     servidores: list[Servidor]
     objetivos: list[ObjetivoAccionMultiple]
 
@@ -290,9 +292,9 @@ async def ejecutar_accion_multiple(
     if definicion.requiere_confirmacion and not datos.confirmar:
         raise ErrorConfirmacionRequerida()
 
-    objetivos = await _resolver_objetivos(
+    objetivos = await resolver_objetivos_accion_multiple(
         sesion,
-        datos,
+        datos.seleccion,
         configuracion.max_servidores_accion_multiple,
     )
     semaforo = asyncio.Semaphore(configuracion.max_concurrencia_acciones_multiples)

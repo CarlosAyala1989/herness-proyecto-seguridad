@@ -17,7 +17,11 @@ from aplicacion.errores import (
     ErrorPermisoDenegado,
     ErrorServidorInactivo,
 )
-from aplicacion.esquemas.acciones import SolicitudEjecucionAccion
+from aplicacion.esquemas.acciones import (
+    SeleccionServidores,
+    SolicitudEjecucionAccion,
+    SolicitudEjecucionMultiple,
+)
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
 from aplicacion.modelos.acceso import Rol, Usuario
 from aplicacion.modelos.enumeraciones import (
@@ -25,6 +29,7 @@ from aplicacion.modelos.enumeraciones import (
     SistemaOperativo,
     TipoCredencialConexion,
 )
+from aplicacion.modelos.grupo_servidor import GrupoServidor
 from aplicacion.modelos.identidad_mensajeria import IdentidadMensajeria
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
@@ -95,7 +100,9 @@ class ContextoTelegramIntegracion:
     prefijo: str
     identificador_autorizado: int
     id_servidor_activo: int
+    id_segundo_servidor_activo: int
     id_servidor_inactivo: int
+    id_grupo: int
     primer_registro_auditoria: int
 
 
@@ -146,7 +153,25 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
             activo=False,
             grupos=[],
         )
-        sesion.add_all([usuario, servidor_activo, servidor_inactivo])
+        segundo_servidor_activo = Servidor(
+            nombre=f"{prefijo}-activo-2",
+            descripcion="Segundo servidor Telegram de integración",
+            direccion="192.0.2.72",
+            puerto_ssh=22,
+            usuario_conexion="operador_telegram",
+            sistema_operativo=SistemaOperativo.WINDOWS_SERVER,
+            tipo_credencial=TipoCredencialConexion.CLAVE_SSH,
+            referencia_credencial=f"archivo:{prefijo}-activo-2",
+            huella_clave_host="SHA256:huellaTelegramActivaDos0000000000000000",
+            activo=True,
+            grupos=[],
+        )
+        grupo = GrupoServidor(
+            nombre=f"{prefijo}-grupo",
+            descripcion="Grupo Telegram de integración",
+            servidores=[servidor_activo, segundo_servidor_activo],
+        )
+        sesion.add_all([usuario, servidor_activo, servidor_inactivo, grupo])
         await sesion.commit()
         await vincular_identidad_telegram(
             sesion,
@@ -155,7 +180,9 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
             "usuario_telegram_pruebas",
         )
         id_servidor_activo = servidor_activo.id_servidor
+        id_segundo_servidor_activo = segundo_servidor_activo.id_servidor
         id_servidor_inactivo = servidor_inactivo.id_servidor
+        id_grupo = grupo.id_grupo
 
     gestor = GestorTelegram(
         fabrica_sesiones,
@@ -169,7 +196,9 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
         prefijo=prefijo,
         identificador_autorizado=identificador_autorizado,
         id_servidor_activo=id_servidor_activo,
+        id_segundo_servidor_activo=id_segundo_servidor_activo,
         id_servidor_inactivo=id_servidor_inactivo,
+        id_grupo=id_grupo,
         primer_registro_auditoria=int(primer_registro or 0),
     )
     try:
@@ -182,6 +211,9 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
                 )
             )
             await sesion.execute(delete(Servidor).where(Servidor.nombre.like(f"{prefijo}%")))
+            await sesion.execute(
+                delete(GrupoServidor).where(GrupoServidor.nombre.like(f"{prefijo}%"))
+            )
             await sesion.execute(
                 delete(IdentidadMensajeria).where(
                     IdentidadMensajeria.identificador_externo == str(identificador_autorizado)
@@ -212,8 +244,21 @@ async def test_autoriza_por_identificador_y_reutiliza_motor_comun(
         1002,
     )
     assert {servidor.id_servidor for servidor in servidores} == {
-        contexto_telegram_integracion.id_servidor_activo
+        contexto_telegram_integracion.id_servidor_activo,
+        contexto_telegram_integracion.id_segundo_servidor_activo,
     }
+
+    grupos = await gestor.consultar_grupos(
+        contexto_telegram_integracion.identificador_autorizado,
+        1002,
+    )
+    assert {grupo.id_grupo for grupo in grupos} == {contexto_telegram_integracion.id_grupo}
+    cantidad_grupo = await gestor.comprobar_seleccion_multiple(
+        contexto_telegram_integracion.identificador_autorizado,
+        1002,
+        SeleccionServidores(id_grupo=contexto_telegram_integracion.id_grupo),
+    )
+    assert cantidad_grupo == 2
 
     resultado = await gestor.ejecutar_accion(
         contexto_telegram_integracion.identificador_autorizado,
@@ -248,10 +293,25 @@ async def test_autoriza_por_identificador_y_reutiliza_motor_comun(
     assert servicio.datos["estado"] == "activo"
     assert servicio.datos["inicio_automatico"] is True
 
+    resultado_multiple = await gestor.ejecutar_accion_multiple(
+        contexto_telegram_integracion.identificador_autorizado,
+        1006,
+        "obtener_identidad",
+        SolicitudEjecucionMultiple(
+            seleccion=SeleccionServidores(id_grupo=contexto_telegram_integracion.id_grupo)
+        ),
+    )
+    assert resultado_multiple.estado == "completada"
+    assert resultado_multiple.total_servidores == 2
+    assert {resultado.id_servidor for resultado in resultado_multiple.resultados} == {
+        contexto_telegram_integracion.id_servidor_activo,
+        contexto_telegram_integracion.id_segundo_servidor_activo,
+    }
+
     with pytest.raises(ErrorServidorInactivo):
         await gestor.ejecutar_accion(
             contexto_telegram_integracion.identificador_autorizado,
-            1006,
+            1009,
             contexto_telegram_integracion.id_servidor_inactivo,
             "obtener_identidad",
             SolicitudEjecucionAccion(),
@@ -278,6 +338,14 @@ async def test_autoriza_por_identificador_y_reutiliza_motor_comun(
     assert denegacion.direccion_origen == "telegram:799999999"
     assert ejecucion.canal is CanalAuditoria.TELEGRAM
     assert ejecucion.identificador_solicitud == "tg:1003"
+    ejecuciones_multiples = [
+        registro
+        for registro in registros
+        if registro.accion == "ejecutar_accion_obtener_identidad"
+        and registro.identificador_solicitud == "tg:1006"
+    ]
+    assert len(ejecuciones_multiples) == 2
+    assert all(registro.canal is CanalAuditoria.TELEGRAM for registro in ejecuciones_multiples)
 
 
 @pytest.mark.integracion

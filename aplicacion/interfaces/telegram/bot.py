@@ -21,7 +21,13 @@ from telegram.ext import (
 
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import ErrorHermes, ErrorIdentidadMensajeriaNoAutorizada
-from aplicacion.esquemas.acciones import ResultadoAccionRespuesta, SolicitudEjecucionAccion
+from aplicacion.esquemas.acciones import (
+    ResultadoAccionMultipleRespuesta,
+    ResultadoAccionRespuesta,
+    SeleccionServidores,
+    SolicitudEjecucionAccion,
+    SolicitudEjecucionMultiple,
+)
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.canal_mensajeria import CanalMensajeria
 from aplicacion.modelos.enumeraciones import SistemaOperativo
@@ -29,6 +35,7 @@ from aplicacion.servicios.gestor_telegram import GestorTelegram
 
 registrador = logging.getLogger(__name__)
 CLAVE_SERVIDOR_SELECCIONADO = "id_servidor_seleccionado"
+CLAVE_SELECCION_SERVIDORES = "seleccion_servidores"
 CLAVE_CONFIRMACION_ACCION = "confirmacion_accion"
 # Alias interno conservado para consumidores del hito anterior.
 CLAVE_CONFIRMACION_REINICIO = CLAVE_CONFIRMACION_ACCION
@@ -41,9 +48,9 @@ MAX_ID_PROCESO = 4_194_304
 
 @dataclass(frozen=True, slots=True)
 class ConfirmacionAccionSensible:
-    """Desafío efímero ligado a una acción y un servidor concretos."""
+    """Desafío efímero ligado a una acción y una selección inmutable."""
 
-    id_servidor: int
+    seleccion: SeleccionServidores
     codigo_accion: str
     solicitud: SolicitudEjecucionAccion
     codigo_aleatorio: str
@@ -54,8 +61,11 @@ COMANDOS_TELEGRAM = (
     BotCommand("inicio", "Iniciar Hermes y comprobar autorización"),
     BotCommand("ayuda", "Mostrar los comandos disponibles"),
     BotCommand("servidores", "Listar y seleccionar un servidor"),
+    BotCommand("grupos", "Listar y seleccionar un grupo"),
     BotCommand("seleccionar", "Seleccionar un servidor por identificador"),
-    BotCommand("seleccion", "Mostrar el servidor seleccionado"),
+    BotCommand("seleccionar_grupo", "Seleccionar un grupo por identificador"),
+    BotCommand("seleccionar_todos", "Seleccionar todos los servidores activos"),
+    BotCommand("seleccion", "Mostrar la selección actual"),
     BotCommand("diagnostico", "Consultar estado y recursos del servidor"),
     BotCommand("servicio", "Consultar un servicio del sistema"),
     BotCommand("iniciar_servicio", "Iniciar un servicio con confirmación"),
@@ -90,7 +100,12 @@ class InterfazTelegram(CanalMensajeria):
         aplicacion.add_handler(CommandHandler(["inicio", "start"], self.iniciar))
         aplicacion.add_handler(CommandHandler("ayuda", self.mostrar_ayuda))
         aplicacion.add_handler(CommandHandler("servidores", self.mostrar_servidores))
+        aplicacion.add_handler(CommandHandler("grupos", self.mostrar_grupos))
         aplicacion.add_handler(CommandHandler("seleccionar", self.seleccionar_por_comando))
+        aplicacion.add_handler(
+            CommandHandler("seleccionar_grupo", self.seleccionar_grupo_por_comando)
+        )
+        aplicacion.add_handler(CommandHandler("seleccionar_todos", self.seleccionar_todos))
         aplicacion.add_handler(CommandHandler("seleccion", self.mostrar_seleccion))
         aplicacion.add_handler(CommandHandler("diagnostico", self.obtener_diagnostico))
         aplicacion.add_handler(CommandHandler("servicio", self.consultar_servicio))
@@ -105,6 +120,12 @@ class InterfazTelegram(CanalMensajeria):
             CallbackQueryHandler(
                 self.seleccionar_por_boton,
                 pattern=r"^seleccionar:[1-9][0-9]{0,18}$",
+            )
+        )
+        aplicacion.add_handler(
+            CallbackQueryHandler(
+                self.seleccionar_grupo_por_boton,
+                pattern=r"^seleccionar_grupo:[1-9][0-9]{0,18}$",
             )
         )
         aplicacion.add_handler(
@@ -217,7 +238,10 @@ class InterfazTelegram(CanalMensajeria):
         return (
             "Comandos disponibles:\n"
             "/servidores — listar y elegir un servidor\n"
+            "/grupos — listar y elegir un grupo\n"
             "/seleccionar <id> — elegir un servidor\n"
+            "/seleccionar_grupo <id> — elegir un grupo\n"
+            "/seleccionar_todos — elegir todos los servidores activos\n"
             "/seleccion — mostrar la selección actual\n"
             "/diagnostico — consultar estado, recursos y sistema\n"
             "/servicio <nombre> — consultar un servicio\n"
@@ -283,6 +307,67 @@ class InterfazTelegram(CanalMensajeria):
             InlineKeyboardMarkup(botones),
         )
 
+    async def mostrar_grupos(
+        self,
+        actualizacion: Update,
+        _: CallbackContext,
+    ) -> None:
+        """Lista grupos como botones sin resolver sus miembros en el bot."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        try:
+            grupos = await self._gestor.consultar_grupos(acceso[0], acceso[1])
+        except ErrorHermes as error:
+            await self._responder(
+                actualizacion,
+                f"No fue posible consultar grupos: {error.mensaje}",
+            )
+            return
+        if not grupos:
+            await self._responder(actualizacion, "No hay grupos registrados.")
+            return
+        botones = [
+            [
+                InlineKeyboardButton(
+                    f"{grupo.id_grupo} · {grupo.nombre[:40]} ({len(grupo.servidores)})",
+                    callback_data=f"seleccionar_grupo:{grupo.id_grupo}",
+                )
+            ]
+            for grupo in grupos
+        ]
+        await self._responder(
+            actualizacion,
+            "Selecciona un grupo de servidores:",
+            InlineKeyboardMarkup(botones),
+        )
+
+    @staticmethod
+    def _guardar_seleccion(
+        contexto: CallbackContext,
+        seleccion: SeleccionServidores,
+    ) -> None:
+        """Conserva el selector común y mantiene compatibilidad con la clave individual."""
+
+        contexto.user_data[CLAVE_SELECCION_SERVIDORES] = seleccion
+        ids = seleccion.ids_servidores
+        if ids is not None and len(ids) == 1:
+            contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = ids[0]
+        else:
+            contexto.user_data.pop(CLAVE_SERVIDOR_SELECCIONADO, None)
+        contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
+
+    @staticmethod
+    def _obtener_seleccion(contexto: CallbackContext) -> SeleccionServidores | None:
+        seleccion = contexto.user_data.get(CLAVE_SELECCION_SERVIDORES)
+        if isinstance(seleccion, SeleccionServidores):
+            return seleccion
+        id_servidor = contexto.user_data.get(CLAVE_SERVIDOR_SELECCIONADO)
+        if isinstance(id_servidor, int) and not isinstance(id_servidor, bool):
+            return SeleccionServidores(ids_servidores=[id_servidor])
+        return None
+
     async def _seleccionar(
         self,
         actualizacion: Update,
@@ -299,8 +384,10 @@ class InterfazTelegram(CanalMensajeria):
         except ErrorHermes as error:
             await self._responder(actualizacion, f"No fue posible seleccionar: {error.mensaje}")
             return
-        contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = servidor.id_servidor
-        contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
+        self._guardar_seleccion(
+            contexto,
+            SeleccionServidores(ids_servidores=[servidor.id_servidor]),
+        )
         await self._responder(
             actualizacion,
             f"Servidor seleccionado: {servidor.nombre} (id {servidor.id_servidor}).",
@@ -325,6 +412,101 @@ class InterfazTelegram(CanalMensajeria):
             await self._responder(actualizacion, "Uso correcto: /seleccionar <id>.")
             return
         await self._seleccionar(actualizacion, contexto, id_servidor, acceso)
+
+    async def _seleccionar_grupo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+        id_grupo: int,
+        acceso: tuple[int, int, str],
+    ) -> None:
+        seleccion = SeleccionServidores(id_grupo=id_grupo)
+        try:
+            cantidad = await self._gestor.comprobar_seleccion_multiple(
+                acceso[0],
+                acceso[1],
+                seleccion,
+            )
+        except ErrorHermes as error:
+            await self._responder(actualizacion, f"No fue posible seleccionar: {error.mensaje}")
+            return
+        self._guardar_seleccion(contexto, seleccion)
+        await self._responder(
+            actualizacion,
+            f"Grupo seleccionado: id {id_grupo}, {cantidad} servidor(es).",
+        )
+
+    async def seleccionar_grupo_por_comando(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Selecciona un grupo validado a partir de un identificador exacto."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        id_grupo = (
+            self._convertir_entero_acotado(contexto.args[0], MAX_ID_SERVIDOR)
+            if len(contexto.args) == 1
+            else None
+        )
+        if id_grupo is None:
+            await self._responder(actualizacion, "Uso correcto: /seleccionar_grupo <id>.")
+            return
+        await self._seleccionar_grupo(actualizacion, contexto, id_grupo, acceso)
+
+    async def seleccionar_grupo_por_boton(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Acepta únicamente el identificador de grupo validado por el patrón del botón."""
+
+        consulta = actualizacion.callback_query
+        if consulta is None or not isinstance(consulta.data, str):
+            return
+        await consulta.answer()
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        id_grupo = self._convertir_entero_acotado(
+            consulta.data.partition(":")[2],
+            MAX_ID_SERVIDOR,
+        )
+        if id_grupo is None:
+            await self._responder(actualizacion, "La selección recibida no es válida.")
+            return
+        await self._seleccionar_grupo(actualizacion, contexto, id_grupo, acceso)
+
+    async def seleccionar_todos(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Selecciona dinámicamente todos los servidores activos autorizados."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        if contexto.args:
+            await self._responder(actualizacion, "Uso correcto: /seleccionar_todos.")
+            return
+        seleccion = SeleccionServidores(todos=True)
+        try:
+            cantidad = await self._gestor.comprobar_seleccion_multiple(
+                acceso[0],
+                acceso[1],
+                seleccion,
+            )
+        except ErrorHermes as error:
+            await self._responder(actualizacion, f"No fue posible seleccionar: {error.mensaje}")
+            return
+        self._guardar_seleccion(contexto, seleccion)
+        await self._responder(
+            actualizacion,
+            f"Selección activa: todos los servidores activos ({cantidad}).",
+        )
 
     async def seleccionar_por_boton(
         self,
@@ -355,14 +537,41 @@ class InterfazTelegram(CanalMensajeria):
         acceso = await self._autorizar(actualizacion)
         if acceso is None:
             return
-        id_servidor = contexto.user_data.get(CLAVE_SERVIDOR_SELECCIONADO)
-        if not isinstance(id_servidor, int):
-            await self._responder(actualizacion, "No hay servidor seleccionado.")
+        seleccion = self._obtener_seleccion(contexto)
+        if seleccion is None:
+            await self._responder(actualizacion, "No hay servidores seleccionados.")
             return
+        ids = seleccion.ids_servidores
+        if ids is None or len(ids) != 1:
+            try:
+                cantidad = await self._gestor.comprobar_seleccion_multiple(
+                    acceso[0],
+                    acceso[1],
+                    seleccion,
+                )
+            except ErrorHermes as error:
+                contexto.user_data.pop(CLAVE_SELECCION_SERVIDORES, None)
+                await self._responder(
+                    actualizacion,
+                    f"La selección dejó de estar disponible: {error.mensaje}",
+                )
+                return
+            descripcion = (
+                f"Grupo seleccionado: id {seleccion.id_grupo}"
+                if seleccion.id_grupo is not None
+                else "Selección: todos los servidores activos"
+            )
+            await self._responder(
+                actualizacion,
+                f"{descripcion}\nServidores incluidos ahora: {cantidad}.",
+            )
+            return
+        id_servidor = ids[0]
         try:
             servidor = await self._gestor.consultar_servidor(acceso[0], acceso[1], id_servidor)
         except ErrorHermes as error:
             contexto.user_data.pop(CLAVE_SERVIDOR_SELECCIONADO, None)
+            contexto.user_data.pop(CLAVE_SELECCION_SERVIDORES, None)
             await self._responder(
                 actualizacion, f"La selección dejó de estar disponible: {error.mensaje}"
             )
@@ -391,21 +600,34 @@ class InterfazTelegram(CanalMensajeria):
         acceso = await self._autorizar(actualizacion)
         if acceso is None:
             return
-        id_servidor = contexto.user_data.get(CLAVE_SERVIDOR_SELECCIONADO)
-        if not isinstance(id_servidor, int):
+        seleccion = self._obtener_seleccion(contexto)
+        if seleccion is None:
             await self._responder(
                 actualizacion,
-                "Selecciona primero un servidor con /servidores o /seleccionar <id>.",
+                "Selecciona primero un servidor, un grupo o todos los servidores.",
             )
             return
         try:
-            resultado = await self._gestor.ejecutar_accion(
-                acceso[0],
-                acceso[1],
-                id_servidor,
-                codigo_accion,
-                datos,
-            )
+            ids = seleccion.ids_servidores
+            if ids is not None and len(ids) == 1:
+                resultado = await self._gestor.ejecutar_accion(
+                    acceso[0],
+                    acceso[1],
+                    ids[0],
+                    codigo_accion,
+                    datos,
+                )
+            else:
+                resultado_multiple = await self._gestor.ejecutar_accion_multiple(
+                    acceso[0],
+                    acceso[1],
+                    codigo_accion,
+                    SolicitudEjecucionMultiple(
+                        seleccion=seleccion,
+                        parametros=datos.parametros,
+                        confirmar=datos.confirmar,
+                    ),
+                )
         except ErrorHermes as error:
             if codigo_accion == "obtener_diagnostico":
                 await self._responder(
@@ -419,7 +641,51 @@ class InterfazTelegram(CanalMensajeria):
                     f"La operación no se completó: {error.mensaje}",
                 )
             return
-        await self._responder(actualizacion, self._formatear_resultado(resultado))
+        if ids is not None and len(ids) == 1:
+            await self._responder(actualizacion, self._formatear_resultado(resultado))
+        else:
+            for mensaje in self._formatear_resultado_multiple(resultado_multiple):
+                await self._responder(actualizacion, mensaje)
+
+    def _formatear_resultado_multiple(
+        self,
+        resultado: ResultadoAccionMultipleRespuesta,
+    ) -> list[str]:
+        """Genera mensajes acotados sin omitir el resultado de ningún servidor."""
+
+        encabezado = (
+            f"Acción múltiple: {resultado.accion.value}\n"
+            f"Completados: {resultado.servidores_completados} · "
+            f"Fallidos: {resultado.servidores_fallidos}\n"
+        )
+        lineas = []
+        for elemento in resultado.resultados:
+            nombre = elemento.nombre_servidor or f"id {elemento.id_servidor}"
+            if elemento.estado == "error":
+                lineas.append(f"❌ {nombre}: {elemento.mensaje_error}")
+                continue
+            detalle = "completada"
+            if resultado.accion.value == "obtener_diagnostico" and elemento.datos:
+                detalle = (
+                    f"CPU {self._formatear_porcentaje(elemento.datos.get('cpu_porcentaje'))}, "
+                    f"RAM {self._formatear_porcentaje(elemento.datos.get('memoria_porcentaje'))}, "
+                    f"disco {self._formatear_porcentaje(elemento.datos.get('disco_porcentaje'))}"
+                )
+            elif resultado.accion.value.endswith("servicio") and elemento.datos:
+                detalle = f"servicio {elemento.datos.get('estado', 'no disponible')}"
+            lineas.append(f"✅ {nombre}: {detalle}")
+
+        mensajes: list[str] = []
+        actual = encabezado
+        for linea in lineas:
+            candidato = f"{actual}\n{linea}"
+            if len(candidato) > LIMITE_MENSAJE_TELEGRAM and actual != encabezado:
+                mensajes.append(actual)
+                actual = f"Continuación:\n{linea}"
+            else:
+                actual = candidato
+        mensajes.append(actual)
+        return mensajes
 
     @staticmethod
     def _formatear_porcentaje(valor: object) -> str:
@@ -577,18 +843,37 @@ class InterfazTelegram(CanalMensajeria):
         acceso = await self._autorizar(actualizacion)
         if acceso is None:
             return
-        id_servidor = contexto.user_data.get(CLAVE_SERVIDOR_SELECCIONADO)
-        if not isinstance(id_servidor, int):
-            await self._responder(actualizacion, "Selecciona primero un servidor.")
+        seleccion = self._obtener_seleccion(contexto)
+        if seleccion is None:
+            await self._responder(actualizacion, "Selecciona primero uno o más servidores.")
             return
         try:
-            servidor = await self._gestor.comprobar_accion_sensible(
-                acceso[0],
-                acceso[1],
-                id_servidor,
-                codigo_accion,
-                solicitud,
-            )
+            ids = seleccion.ids_servidores
+            if ids is not None and len(ids) == 1:
+                servidor = await self._gestor.comprobar_accion_sensible(
+                    acceso[0],
+                    acceso[1],
+                    ids[0],
+                    codigo_accion,
+                    solicitud,
+                )
+                seleccion_fijada = SeleccionServidores(
+                    ids_servidores=[servidor.id_servidor]
+                )
+                descripcion_destino = servidor.nombre
+            else:
+                seleccion_fijada, cantidad = (
+                    await self._gestor.comprobar_accion_sensible_multiple(
+                        acceso[0],
+                        acceso[1],
+                        codigo_accion,
+                        SolicitudEjecucionMultiple(
+                            seleccion=seleccion,
+                            parametros=solicitud.parametros,
+                        ),
+                    )
+                )
+                descripcion_destino = f"{cantidad} servidores"
         except ErrorHermes as error:
             await self._responder(
                 actualizacion,
@@ -597,7 +882,7 @@ class InterfazTelegram(CanalMensajeria):
             return
         codigo_aleatorio = secrets.token_urlsafe(9)
         contexto.user_data[CLAVE_CONFIRMACION_ACCION] = ConfirmacionAccionSensible(
-            id_servidor=servidor.id_servidor,
+            seleccion=seleccion_fijada,
             codigo_accion=codigo_accion,
             solicitud=solicitud,
             codigo_aleatorio=codigo_aleatorio,
@@ -619,7 +904,8 @@ class InterfazTelegram(CanalMensajeria):
         )
         await self._responder(
             actualizacion,
-            f"¿Confirmas {descripcion} en {servidor.nombre}? La confirmación caduca pronto.",
+            f"¿Confirmas {descripcion} en {descripcion_destino}? "
+            "La confirmación caduca pronto y sus destinos ya quedaron fijados.",
             teclado,
         )
 
@@ -734,7 +1020,7 @@ class InterfazTelegram(CanalMensajeria):
         if decision == "cancelar":
             await self._responder(actualizacion, "Operación cancelada.")
             return
-        contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = pendiente.id_servidor
+        self._guardar_seleccion(contexto, pendiente.seleccion)
         await self._ejecutar_accion(
             actualizacion,
             contexto,
