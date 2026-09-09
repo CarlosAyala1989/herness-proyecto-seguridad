@@ -52,6 +52,7 @@ COMANDOS_TELEGRAM = (
     BotCommand("servidores", "Listar y seleccionar un servidor"),
     BotCommand("seleccionar", "Seleccionar un servidor por identificador"),
     BotCommand("seleccion", "Mostrar el servidor seleccionado"),
+    BotCommand("diagnostico", "Consultar estado y recursos del servidor"),
     BotCommand("identidad", "Consultar identidad del servidor seleccionado"),
     BotCommand("proceso", "Consultar un proceso por identificador"),
     BotCommand("reiniciar", "Solicitar un reinicio con confirmación"),
@@ -83,6 +84,7 @@ class InterfazTelegram(CanalMensajeria):
         aplicacion.add_handler(CommandHandler("servidores", self.mostrar_servidores))
         aplicacion.add_handler(CommandHandler("seleccionar", self.seleccionar_por_comando))
         aplicacion.add_handler(CommandHandler("seleccion", self.mostrar_seleccion))
+        aplicacion.add_handler(CommandHandler("diagnostico", self.obtener_diagnostico))
         aplicacion.add_handler(CommandHandler("identidad", self.obtener_identidad))
         aplicacion.add_handler(CommandHandler("proceso", self.consultar_proceso))
         aplicacion.add_handler(CommandHandler("reiniciar", self.solicitar_reinicio))
@@ -205,6 +207,7 @@ class InterfazTelegram(CanalMensajeria):
             "/servidores — listar y elegir un servidor\n"
             "/seleccionar <id> — elegir un servidor\n"
             "/seleccion — mostrar la selección actual\n"
+            "/diagnostico — consultar estado, recursos y sistema\n"
             "/identidad — consultar usuario remoto y equipo\n"
             "/proceso <id> — consultar un proceso\n"
             "/reiniciar — solicitar un reinicio confirmado\n"
@@ -388,11 +391,54 @@ class InterfazTelegram(CanalMensajeria):
                 datos,
             )
         except ErrorHermes as error:
-            await self._responder(actualizacion, f"La operación no se completó: {error.mensaje}")
+            if codigo_accion == "obtener_diagnostico":
+                await self._responder(
+                    actualizacion,
+                    "Estado: No disponible\n"
+                    f"Detalle: No fue posible obtener el diagnóstico: {error.mensaje}",
+                )
+            else:
+                await self._responder(
+                    actualizacion,
+                    f"La operación no se completó: {error.mensaje}",
+                )
             return
         await self._responder(actualizacion, self._formatear_resultado(resultado))
 
+    @staticmethod
+    def _formatear_porcentaje(valor: object) -> str:
+        if not isinstance(valor, (int, float)) or isinstance(valor, bool):
+            return "No disponible"
+        return f"{valor:.2f} %"
+
+    @staticmethod
+    def _formatear_tiempo_actividad(valor: object) -> str:
+        if not isinstance(valor, int) or isinstance(valor, bool) or valor < 0:
+            return "No disponible"
+        dias, resto = divmod(valor, 86_400)
+        horas, resto = divmod(resto, 3_600)
+        minutos = resto // 60
+        return f"{dias} d, {horas} h, {minutos} min"
+
+    @staticmethod
+    def _formatear_texto_diagnostico(valor: object) -> str:
+        return valor if isinstance(valor, str) and valor else "No disponible"
+
     def _formatear_resultado(self, resultado: ResultadoAccionRespuesta) -> str:
+        if resultado.accion.value == "obtener_diagnostico":
+            datos = resultado.datos
+            return (
+                f"Servidor: {resultado.nombre_servidor}\n"
+                f"Sistema: {self._formatear_texto_diagnostico(datos.get('sistema'))}\n"
+                f"Versión: {self._formatear_texto_diagnostico(datos.get('version'))}\n"
+                f"Equipo: {self._formatear_texto_diagnostico(datos.get('nombre_equipo'))}\n"
+                "Estado: Disponible\n"
+                f"CPU: {self._formatear_porcentaje(datos.get('cpu_porcentaje'))}\n"
+                f"RAM: {self._formatear_porcentaje(datos.get('memoria_porcentaje'))}\n"
+                f"Disco: {self._formatear_porcentaje(datos.get('disco_porcentaje'))}\n"
+                "Tiempo de actividad: "
+                f"{self._formatear_tiempo_actividad(datos.get('tiempo_actividad_segundos'))}"
+            )
         encabezado = (
             f"Servidor: {resultado.nombre_servidor}\n"
             f"Sistema: {self._formatear_sistema(resultado.sistema_operativo)}\n"
@@ -411,6 +457,20 @@ class InterfazTelegram(CanalMensajeria):
                 + f"Nombre: {resultado.datos['nombre_proceso']}"
             )
         return encabezado + "Reinicio programado en 60 segundos."
+
+    async def obtener_diagnostico(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Solicita al backend el diagnóstico normalizado del servidor elegido."""
+
+        await self._ejecutar_accion(
+            actualizacion,
+            contexto,
+            "obtener_diagnostico",
+            SolicitudEjecucionAccion(),
+        )
 
     async def obtener_identidad(self, actualizacion: Update, contexto: CallbackContext) -> None:
         """Solicita la acción de identidad al backend común."""
