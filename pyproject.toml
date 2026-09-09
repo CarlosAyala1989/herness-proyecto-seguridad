@@ -9,9 +9,11 @@ description = "Plataforma centralizada de administración remota mediante mensaj
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic==1.19.2",
     "asyncmy==0.2.14",
     "fastapi==0.141.1",
     "pydantic-settings==2.15.0",
+    "pwdlib[argon2]==0.3.1",
     "sqlalchemy[asyncio]==2.0.52",
     "uvicorn[standard]==0.52.4",
 ]
