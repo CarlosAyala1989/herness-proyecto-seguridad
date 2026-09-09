@@ -2,7 +2,8 @@
 
 Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
-hitos y actualmente dispone de inventario, seguridad y transporte SSH.
+hitos y actualmente dispone de inventario, seguridad, transporte SSH y un motor
+de acciones administrativas controladas.
 
 ## Estado actual
 
