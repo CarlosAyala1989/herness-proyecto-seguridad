@@ -44,6 +44,10 @@ Los parámetros y la salida remota no se copian al detalle de auditoría.
 | `consultar_proceso` | `ejecutar_acciones_lectura` | `id_proceso`, entero entre 1 y 4 194 304 | No | Identificador y nombre del proceso. |
 | `reiniciar_servidor` | `reiniciar_servidor` | Ninguno | Sí | Reinicio programado con 60 segundos de margen. |
 | `obtener_diagnostico` | `consultar_diagnostico` | Ninguno | No | Disponibilidad, CPU, RAM, disco, actividad, sistema, versión y equipo. |
+| `consultar_servicio` | `consultar_servicios` | `nombre_servicio` validado | No | Estado común, estado nativo e inicio automático. |
+| `iniciar_servicio` | `gestionar_servicios` | `nombre_servicio` validado | Sí | Estado del servicio después del inicio. |
+| `detener_servicio` | `gestionar_servicios` | `nombre_servicio` validado | Sí | Estado del servicio después de la detención. |
+| `reiniciar_servicio` | `gestionar_servicios` | `nombre_servicio` validado | Sí | Estado del servicio después del reinicio. |
 
 Linux usa herramientas del sistema y Windows Server invoca PowerShell de forma
 no interactiva. Ambos adaptadores producen los mismos campos de respuesta. Un
@@ -88,6 +92,19 @@ curl --user administrador_local \
 
 La respuesta contiene servidor, sistema operativo, acción, estado, datos
 normalizados y duración. No expone la orden remota ni la salida de error.
+
+La consulta de un servicio usa el nombre interno, no el nombre visible:
+
+```bash
+curl --user administrador_local \
+  --header 'Content-Type: application/json' \
+  --data '{"parametros":{"nombre_servicio":"ssh.service"}}' \
+  http://127.0.0.1:8000/api/v1/servidores/1/acciones/consultar_servicio
+```
+
+Las mutaciones utilizan el mismo cuerpo y además requieren
+`"confirmar": true`. Consulta `servicios.md` antes de conceder privilegios a la
+cuenta remota.
 
 ## Operación sensible de reinicio
 

@@ -86,8 +86,9 @@ Tiempo de actividad: 1 d, 1 h, 1 min
   auditor no lo recibe.
 - Cada ejecución deja un registro por usuario, servidor y canal.
 
-La gestión de servicios, la ejecución simultánea sobre grupos y las alertas
-automáticas pertenecen respectivamente a los hitos 7, 8 y 10.
+La gestión de servicios ya está incorporada y se documenta en `servicios.md`.
+La ejecución simultánea sobre grupos y las alertas automáticas pertenecen a los
+hitos 8 y 10.
 
 ## Referencias técnicas
 

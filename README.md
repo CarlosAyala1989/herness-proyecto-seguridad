@@ -7,7 +7,7 @@ de acciones administrativas controladas, diagnóstico y una interfaz Telegram.
 
 ## Estado actual
 
-Hitos 1 a 6 completados. Hermes 0.6.0 proporciona:
+Hitos 1 a 7 completados. Hermes 0.7.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -36,12 +36,16 @@ Hitos 1 a 6 completados. Hermes 0.6.0 proporciona:
 - diagnóstico uniforme de disponibilidad, CPU, RAM, disco, tiempo de actividad,
   sistema, versión y nombre del equipo;
 - recopiladores independientes para Linux y Windows Server con métricas no
-  disponibles representadas explícitamente, sin detener las demás lecturas.
+  disponibles representadas explícitamente, sin detener las demás lecturas;
+- consulta, inicio, detención y reinicio normalizados de servicios;
+- `systemctl` en Linux y cmdlets de PowerShell en Windows Server;
+- permisos separados y confirmación de un solo uso para cada cambio de estado.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
-`obtener_diagnostico` y `reiniciar_servidor`. Telegram ya reutiliza esas
-acciones. La administración de servicios corresponde al hito 7 y Slack se
-incorporará en el hito 9.
+`obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
+`detener_servicio`, `reiniciar_servicio` y `reiniciar_servidor`. Telegram ya
+reutiliza esas acciones. Las operaciones simultáneas corresponden al hito 8 y
+Slack se incorporará en el hito 9.
 
 ## Requisitos locales
 
@@ -129,3 +133,5 @@ La activación y el uso del bot se explican en
 [`documentacion/telegram.md`](documentacion/telegram.md).
 La obtención y normalización de métricas se detalla en
 [`documentacion/diagnostico.md`](documentacion/diagnostico.md).
+La preparación de cuentas y administración de servicios se explica en
+[`documentacion/servicios.md`](documentacion/servicios.md).

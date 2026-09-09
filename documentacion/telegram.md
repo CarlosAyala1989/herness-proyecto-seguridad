@@ -1,7 +1,7 @@
 # Integración con Telegram
 
-Telegram es una interfaz del backend común de Hermes y en el hito 6 incorpora
-el diagnóstico uniforme. El
+Telegram es una interfaz del backend común de Hermes; ofrece diagnóstico desde
+el hito 6 y gestión confirmada de servicios desde el hito 7. El
 bot no construye órdenes del sistema, no se conecta por SSH directamente y no
 mantiene una lista de usuarios dentro del código. Cada interacción consulta
 MariaDB y delega en los servicios de inventario, permisos, acciones y auditoría.
@@ -140,6 +140,10 @@ preparar el inventario y administrar usuarios.
 | `/seleccionar <id>` | Selecciona un servidor mediante un entero validado. |
 | `/seleccion` | Vuelve a validar y muestra el servidor actual. |
 | `/diagnostico` | Muestra disponibilidad, CPU, RAM, disco, actividad, sistema y versión. |
+| `/servicio <nombre>` | Consulta el estado exacto de un servicio. |
+| `/iniciar_servicio <nombre>` | Solicita confirmación antes de iniciar un servicio. |
+| `/detener_servicio <nombre>` | Solicita confirmación antes de detener un servicio. |
+| `/reiniciar_servicio <nombre>` | Solicita confirmación antes de reiniciar un servicio. |
 | `/identidad` | Ejecuta `obtener_identidad` sobre el servidor actual. |
 | `/proceso <id>` | Ejecuta `consultar_proceso` con un identificador acotado. |
 | `/reiniciar` | Solicita una confirmación efímera antes del reinicio. |
@@ -157,13 +161,16 @@ Con el bot, MariaDB, OpenSSH y el agente activos:
 3. Envía `/seleccion` y verifica nombre y sistema.
 4. Envía `/diagnostico` y comprueba los recursos y datos reales del equipo.
 5. Envía `/identidad` y comprueba el usuario remoto y el nombre del equipo.
-6. Envía `/proceso 1` y comprueba que se informa el proceso del sistema.
-7. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
+6. Envía `/servicio ssh.service` en Linux o `/servicio sshd` en Windows y
+   comprueba el estado. Esta consulta no cambia el servicio.
+7. Envía `/proceso 1` y comprueba que se informa el proceso del sistema.
+8. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
    `telegram`.
 
-No uses `/reiniciar` para una demostración ordinaria. Su confirmación autoriza
-un reinicio real programado a 60 segundos. Las pruebas automatizadas sustituyen
-el transporte y nunca reinician el anfitrión.
+No uses `/reiniciar` ni los comandos que modifican servicios para una
+demostración ordinaria. Sus botones autorizan cambios reales. Las pruebas
+automatizadas de mutación sustituyen el transporte y nunca alteran el
+anfitrión.
 
 ## Controles operativos
 
@@ -174,8 +181,8 @@ el transporte y nunca reinician el anfitrión.
 - Se admiten 30 solicitudes por identidad y minuto.
 - El limitador conserva como máximo 5 000 identidades recientes.
 - Los identificadores de servidor y proceso están acotados antes de convertirlos.
-- Una confirmación de reinicio tiene un código aleatorio, caduca y se consume
-  una sola vez.
+- Cada confirmación sensible tiene un código aleatorio, queda ligada a su
+  acción y servidor, caduca y se consume una sola vez.
 - Los registros solo incluyen el tipo de un error inesperado de Telegram; no
   incluyen el mensaje, la actualización ni el token.
 

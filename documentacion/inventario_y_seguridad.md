@@ -1,7 +1,7 @@
 # Inventario y seguridad
 
 Este documento describe el inventario y el modelo de acceso incorporados desde
-el hito 2 y ampliados hasta el hito 6. Todas las rutas HTTP funcionales usan el
+el hito 2 y ampliados hasta el hito 7. Todas las rutas HTTP funcionales usan el
 prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
 correspondiente en MariaDB.
 
@@ -58,12 +58,15 @@ La migración registra estos permisos:
 | `ejecutar_acciones_lectura` | Ejecutar acciones remotas predefinidas de solo lectura. |
 | `reiniciar_servidor` | Programar el reinicio confirmado de un servidor. |
 | `consultar_diagnostico` | Consultar disponibilidad, recursos y datos normalizados del sistema. |
+| `consultar_servicios` | Consultar el estado de servicios remotos. |
+| `gestionar_servicios` | Iniciar, detener y reiniciar servicios remotos confirmados. |
 
 Los roles iniciales son `administrador`, `operador_inventario` y `auditor`. El
 administrador reúne todos los permisos; el operador puede consultar y gestionar
-el inventario, comprobar conexiones, ejecutar las acciones de lectura y obtener
-diagnósticos; el auditor solo puede consultar inventario y auditoría. Únicamente el administrador
-inicial recibe el permiso de reinicio.
+el inventario, comprobar conexiones, ejecutar las acciones de lectura, obtener
+diagnósticos y consultar servicios; el auditor solo puede consultar inventario
+y auditoría. Únicamente el administrador inicial recibe los permisos de
+reinicio del servidor y gestión de servicios.
 
 El primer administrador se crea mediante el comando interactivo documentado en
 `instalacion_local.md`. Hermes impide retirar el último rol administrador activo

@@ -3,7 +3,7 @@
 ## Objetivo actual
 
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
-persistencia y contratos externos. Telegram y el diagnóstico del hito 6 usan
+persistencia y contratos externos. Telegram, diagnóstico y servicios usan
 esos mismos servicios sin duplicar inventario, autorización, SSH ni auditoría.
 
 ## Componentes actuales
@@ -63,6 +63,8 @@ Telegram ──► interfaz/telegram ──► gestor_telegram
   mensajería.
 - `adaptadores/diagnostico.py` valida y normaliza el contrato común de métricas;
   los valores ausentes se representan con `None` dentro del backend.
+- `adaptadores/servicios.py` valida nombres, estados, marcadores y errores de
+  servicios con un contrato común para Linux y Windows Server.
 - `servicios/auditoria.py` registra el actor, la acción, el recurso y el
   resultado dentro de la misma base de datos.
 - `modelos/` define inventario, control de acceso y auditoría. Las relaciones de
@@ -135,6 +137,11 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   visible y el teléfono no conceden acceso.
 - Las confirmaciones Telegram usan un valor aleatorio, caducan, pertenecen al
   estado de un único usuario y solo pueden consumirse una vez.
+- Inicio, detención y reinicio de servicios comparten la confirmación genérica;
+  el desafío queda ligado en memoria a la acción, parámetros y servidor que ya
+  fueron autorizados, y todo vuelve a validarse al consumirlo.
+- `consultar_servicios` está separado de `gestionar_servicios`. El operador de
+  inventario solo recibe lectura y el administrador recibe las mutaciones.
 - La interfaz limita a 30 solicitudes por identidad y minuto y acota a 5 000 las
   identidades conservadas temporalmente por su limitador.
 - El token Telegram es `SecretStr`, se exige solo al habilitar el canal y nunca
