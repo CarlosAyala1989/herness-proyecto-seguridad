@@ -9,10 +9,12 @@ from aplicacion.acciones.errores import (
     ErrorEjecucionAccion,
     ErrorParametrosAccion,
     ErrorRespuestaAccionNoValida,
+    ErrorServicioNoEncontrado,
 )
 from aplicacion.acciones.registro import (
     CodigoAccion,
     ParametrosConsultaProceso,
+    ParametrosServicio,
     ParametrosSinCampos,
     listar_definiciones_acciones,
     obtener_definicion_accion,
@@ -45,6 +47,36 @@ def test_valida_parametros_especificos_y_rechaza_campos_adicionales() -> None:
         definicion.validar_parametros({"id_proceso": "123; id"})
     with pytest.raises(ErrorParametrosAccion):
         definicion.validar_parametros({"id_proceso": 123, "comando": "id"})
+
+
+@pytest.mark.parametrize(
+    "nombre",
+    [
+        "ssh;id",
+        "servicio con espacios",
+        "servicio*",
+        "../../servicio",
+        "servicio'",
+        "ñ-servicio",
+        "x" * 129,
+    ],
+)
+def test_rechaza_nombres_de_servicio_inseguros(nombre: str) -> None:
+    definicion = obtener_definicion_accion(CodigoAccion.CONSULTAR_SERVICIO)
+
+    with pytest.raises(ErrorParametrosAccion):
+        definicion.validar_parametros({"nombre_servicio": nombre})
+
+
+def test_acepta_nombres_internos_de_servicio_acotados() -> None:
+    definicion = obtener_definicion_accion(CodigoAccion.CONSULTAR_SERVICIO)
+
+    parametros = definicion.validar_parametros(
+        {"nombre_servicio": "aplicacion-web@instancia_1.service"}
+    )
+
+    assert isinstance(parametros, ParametrosServicio)
+    assert parametros.nombre_servicio == "aplicacion-web@instancia_1.service"
 
 
 @pytest.mark.parametrize("adaptador", [AdaptadorLinux(), AdaptadorWindows()])
@@ -190,5 +222,112 @@ def test_diagnostico_rechaza_respuestas_incompletas_o_fuera_de_rango(
     with pytest.raises(ErrorRespuestaAccionNoValida):
         AdaptadorLinux().interpretar_accion(
             CodigoAccion.OBTENER_DIAGNOSTICO,
+            _resultado(salida),
+        )
+
+
+@pytest.mark.parametrize(
+    ("codigo", "orden_linux", "orden_windows"),
+    [
+        (CodigoAccion.CONSULTAR_SERVICIO, "systemctl show", "Get-Service"),
+        (CodigoAccion.INICIAR_SERVICIO, "systemctl start", "Start-Service"),
+        (CodigoAccion.DETENER_SERVICIO, "systemctl stop", "Stop-Service"),
+        (CodigoAccion.REINICIAR_SERVICIO, "systemctl restart", "Restart-Service"),
+    ],
+)
+def test_servicios_generan_ordenes_especificas_sin_forzar_dependencias(
+    codigo: CodigoAccion,
+    orden_linux: str,
+    orden_windows: str,
+) -> None:
+    parametros = ParametrosServicio(nombre_servicio="hermes-prueba.service")
+
+    linux = AdaptadorLinux().preparar_accion(codigo, parametros)
+    windows = AdaptadorWindows().preparar_accion(codigo, parametros)
+    guion_windows = b64decode(windows.comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
+
+    assert orden_linux in linux.comando
+    assert orden_windows in guion_windows
+    assert "hermes-prueba.service" in linux.comando
+    assert "hermes-prueba.service" in guion_windows
+    assert " -Force" not in guion_windows
+
+
+@pytest.mark.parametrize(
+    ("adaptador", "estado_nativo"),
+    [
+        (AdaptadorLinux(), "active"),
+        (AdaptadorWindows(), "Running"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("codigo", "accion_realizada"),
+    [
+        (CodigoAccion.CONSULTAR_SERVICIO, "consulta"),
+        (CodigoAccion.INICIAR_SERVICIO, "inicio"),
+        (CodigoAccion.DETENER_SERVICIO, "detencion"),
+        (CodigoAccion.REINICIAR_SERVICIO, "reinicio"),
+    ],
+)
+def test_normaliza_resultados_de_servicios_en_ambas_plataformas(
+    adaptador: object,
+    estado_nativo: str,
+    codigo: CodigoAccion,
+    accion_realizada: str,
+) -> None:
+    salida = (
+        f"HERMES_ACCION={codigo.value}\n"
+        "nombre_servicio=hermes-prueba.service\n"
+        "estado=activo\n"
+        f"estado_nativo={estado_nativo}\n"
+        "inicio_automatico=true\n"
+    )
+
+    datos = adaptador.interpretar_accion(codigo, _resultado(salida))
+
+    assert datos == {
+        "nombre_servicio": "hermes-prueba.service",
+        "estado": "activo",
+        "estado_nativo": estado_nativo,
+        "inicio_automatico": True,
+        "accion_realizada": accion_realizada,
+    }
+
+
+def test_informa_servicio_inexistente_sin_exponer_salida_interna() -> None:
+    with pytest.raises(ErrorServicioNoEncontrado) as captura:
+        AdaptadorLinux().interpretar_accion(
+            CodigoAccion.CONSULTAR_SERVICIO,
+            _resultado("HERMES_ERROR=servicio_no_encontrado\n"),
+        )
+
+    assert captura.value.codigo == "servicio_no_encontrado"
+    assert "secreto-que-no-debe-salir" not in captura.value.mensaje
+
+
+@pytest.mark.parametrize(
+    "salida",
+    [
+        "HERMES_ACCION=consultar_servicio\nnombre_servicio=servicio\n",
+        (
+            "HERMES_ACCION=consultar_servicio\n"
+            "nombre_servicio=servicio;id\n"
+            "estado=activo\n"
+            "estado_nativo=active\n"
+            "inicio_automatico=true\n"
+        ),
+        (
+            "HERMES_ACCION=consultar_servicio\n"
+            "nombre_servicio=servicio\n"
+            "estado=inventado\n"
+            "estado_nativo=active\n"
+            "inicio_automatico=true\n"
+        ),
+    ],
+)
+def test_rechaza_respuestas_de_servicio_no_validas(salida: str) -> None:
+    with pytest.raises(ErrorRespuestaAccionNoValida):
+        AdaptadorLinux().interpretar_accion(
+            CodigoAccion.CONSULTAR_SERVICIO,
             _resultado(salida),
         )

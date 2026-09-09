@@ -1,5 +1,6 @@
 """Integración de Telegram con identidades, permisos, acciones y auditoría."""
 
+from base64 import b64decode
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from uuid import uuid4
@@ -49,7 +50,18 @@ class TransporteTelegramSimulado:
     ) -> ResultadoEjecucionRemota:
         assert tiempo_limite_segundos > 0
         assert limite_salida_bytes >= 1_024
-        if "/proc/stat" in comando:
+        comando_legible = comando
+        if "-EncodedCommand" in comando:
+            comando_legible = b64decode(comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
+        if "HERMES_ACCION=consultar_servicio" in comando_legible:
+            salida = (
+                "HERMES_ACCION=consultar_servicio\n"
+                "nombre_servicio=ssh.service\n"
+                "estado=activo\n"
+                "estado_nativo=active\n"
+                "inicio_automatico=true\n"
+            )
+        elif "/proc/stat" in comando_legible:
             salida = (
                 "HERMES_ACCION=obtener_diagnostico\n"
                 "estado=disponible\n"
@@ -62,7 +74,7 @@ class TransporteTelegramSimulado:
                 "nombre_equipo=ubuntu-telegram\n"
             )
         else:
-            assert "HERMES_ACCION=obtener_identidad" in comando
+            assert "HERMES_ACCION=obtener_identidad" in comando_legible
             salida = "HERMES_ACCION=obtener_identidad\noperador_telegram\nubuntu-telegram\n"
         return ResultadoEjecucionRemota(
             codigo_salida=0,
@@ -226,10 +238,20 @@ async def test_autoriza_por_identificador_y_reutiliza_motor_comun(
     assert diagnostico.datos["cpu_porcentaje"] == 12.5
     assert diagnostico.datos["disco_porcentaje"] is None
 
+    servicio = await gestor.ejecutar_accion(
+        contexto_telegram_integracion.identificador_autorizado,
+        1005,
+        contexto_telegram_integracion.id_servidor_activo,
+        "consultar_servicio",
+        SolicitudEjecucionAccion(parametros={"nombre_servicio": "ssh.service"}),
+    )
+    assert servicio.datos["estado"] == "activo"
+    assert servicio.datos["inicio_automatico"] is True
+
     with pytest.raises(ErrorServidorInactivo):
         await gestor.ejecutar_accion(
             contexto_telegram_integracion.identificador_autorizado,
-            1005,
+            1006,
             contexto_telegram_integracion.id_servidor_inactivo,
             "obtener_identidad",
             SolicitudEjecucionAccion(),
@@ -287,12 +309,30 @@ async def test_permiso_se_comprueba_tambien_antes_de_confirmar(
     )
     assert diagnostico.datos["estado"] == "disponible"
 
+    servicio = await contexto_telegram_integracion.gestor.ejecutar_accion(
+        contexto_telegram_integracion.identificador_autorizado,
+        1007,
+        contexto_telegram_integracion.id_servidor_activo,
+        "consultar_servicio",
+        SolicitudEjecucionAccion(parametros={"nombre_servicio": "ssh.service"}),
+    )
+    assert servicio.datos["estado"] == "activo"
+
     with pytest.raises(ErrorPermisoDenegado):
         await contexto_telegram_integracion.gestor.comprobar_accion_sensible(
             contexto_telegram_integracion.identificador_autorizado,
             1005,
             contexto_telegram_integracion.id_servidor_activo,
             "reiniciar_servidor",
+        )
+
+    with pytest.raises(ErrorPermisoDenegado):
+        await contexto_telegram_integracion.gestor.comprobar_accion_sensible(
+            contexto_telegram_integracion.identificador_autorizado,
+            1008,
+            contexto_telegram_integracion.id_servidor_activo,
+            "detener_servicio",
+            SolicitudEjecucionAccion(parametros={"nombre_servicio": "ssh.service"}),
         )
 
 

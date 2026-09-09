@@ -117,6 +117,25 @@ def _resultado(codigo: CodigoAccion) -> ResultadoAccionRespuesta:
             "version": "6.8.0-prueba",
             "nombre_equipo": "ubuntu-laboratorio",
         }
+    elif codigo in {
+        CodigoAccion.CONSULTAR_SERVICIO,
+        CodigoAccion.INICIAR_SERVICIO,
+        CodigoAccion.DETENER_SERVICIO,
+        CodigoAccion.REINICIAR_SERVICIO,
+    }:
+        acciones = {
+            CodigoAccion.CONSULTAR_SERVICIO: "consulta",
+            CodigoAccion.INICIAR_SERVICIO: "inicio",
+            CodigoAccion.DETENER_SERVICIO: "detencion",
+            CodigoAccion.REINICIAR_SERVICIO: "reinicio",
+        }
+        datos = {
+            "nombre_servicio": "ssh.service",
+            "estado": "activo",
+            "estado_nativo": "active",
+            "inicio_automatico": True,
+            "accion_realizada": acciones[codigo],
+        }
     else:
         datos = {"reinicio_programado": True, "demora_segundos": 60}
     return ResultadoAccionRespuesta(
@@ -268,6 +287,83 @@ async def test_reinicio_exige_boton_de_confirmacion_de_un_solo_uso(
     )
     assert "no es válida o ha caducado" in mensaje.respuestas[-1][0]
     assert gestor.ejecutar_accion.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_consulta_servicio_y_muestra_estado_normalizado(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.ejecutar_accion.return_value = _resultado(CodigoAccion.CONSULTAR_SERVICIO)
+    mensaje = MensajeSimulado()
+    contexto = _contexto("ssh.service")
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await interfaz.consultar_servicio(_actualizacion(mensaje), contexto)
+
+    texto = mensaje.respuestas[-1][0]
+    assert "Servicio: ssh.service" in texto
+    assert "Estado del servicio: Activo" in texto
+    assert "Inicio automático: Sí" in texto
+    solicitud = gestor.ejecutar_accion.await_args.args[4]
+    assert solicitud.parametros == {"nombre_servicio": "ssh.service"}
+    assert solicitud.confirmar is False
+
+
+@pytest.mark.asyncio
+async def test_gestion_servicio_exige_confirmacion_ligada_y_de_un_solo_uso(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_accion_sensible.return_value = _servidor()
+    gestor.ejecutar_accion.return_value = _resultado(CodigoAccion.REINICIAR_SERVICIO)
+    mensaje = MensajeSimulado()
+    contexto = _contexto("ssh.service")
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await interfaz.reiniciar_servicio(_actualizacion(mensaje), contexto)
+
+    teclado = mensaje.respuestas[-1][1]
+    datos_boton = teclado.inline_keyboard[0][0].callback_data
+    assert datos_boton.startswith("accion:confirmar:")
+    consulta = ConsultaBotonSimulada(datos_boton)
+    await interfaz.resolver_accion_sensible(
+        _actualizacion(mensaje, id_actualizacion=903, consulta=consulta),
+        contexto,
+    )
+
+    assert consulta.respondida is True
+    solicitud = gestor.ejecutar_accion.await_args.args[4]
+    assert solicitud.parametros == {"nombre_servicio": "ssh.service"}
+    assert solicitud.confirmar is True
+    assert "Operación: Reinicio" in mensaje.respuestas[-1][0]
+
+    await interfaz.resolver_accion_sensible(
+        _actualizacion(
+            mensaje,
+            id_actualizacion=904,
+            consulta=ConsultaBotonSimulada(datos_boton),
+        ),
+        contexto,
+    )
+    assert "no es válida o ha caducado" in mensaje.respuestas[-1][0]
+    assert gestor.ejecutar_accion.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_rechaza_sintaxis_de_servicio_antes_de_crear_confirmacion(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    mensaje = MensajeSimulado()
+
+    await interfaz.detener_servicio(_actualizacion(mensaje), _contexto())
+
+    assert mensaje.respuestas[-1][0] == "Uso correcto: /detener_servicio <nombre>."
+    gestor.comprobar_accion_sensible.assert_not_awaited()
 
 
 def test_configuracion_protege_y_exige_token_telegram() -> None:

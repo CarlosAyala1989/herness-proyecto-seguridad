@@ -1,5 +1,6 @@
 """Recorrido integral de persistencia, permisos e inventario."""
 
+from base64 import b64decode
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from uuid import uuid4
@@ -38,17 +39,56 @@ class TransporteRemotoSimulado:
         assert comando
         assert tiempo_limite_segundos > 0
         assert limite_salida_bytes > 0
-        if "HERMES_ACCION=obtener_identidad" in comando:
+        comando_legible = comando
+        if "-EncodedCommand" in comando:
+            comando_legible = b64decode(comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
+        if "HERMES_ACCION=obtener_identidad" in comando_legible:
             salida = f"HERMES_ACCION=obtener_identidad\noperador_pruebas\n{self.servidor.nombre}\n"
-        elif "HERMES_ACCION=consultar_proceso" in comando:
+        elif "HERMES_ACCION=consultar_proceso" in comando_legible:
             salida = (
                 "HERMES_ACCION=consultar_proceso\n123 python\n"
                 if self.servidor.sistema_operativo.value == "linux"
                 else "HERMES_ACCION=consultar_proceso\n123\npython\n"
             )
-        elif "HERMES_ACCION=reiniciar_servidor" in comando:
+        elif "HERMES_ACCION=reiniciar_servidor" in comando_legible:
             salida = "HERMES_ACCION=reiniciar_servidor\nPROGRAMADO\n"
-        elif "/proc/stat" in comando or "-EncodedCommand" in comando:
+        elif any(
+            f"HERMES_ACCION={accion}" in comando_legible
+            for accion in (
+                "consultar_servicio",
+                "iniciar_servicio",
+                "detener_servicio",
+                "reiniciar_servicio",
+            )
+        ):
+            codigo_accion = next(
+                accion
+                for accion in (
+                    "consultar_servicio",
+                    "iniciar_servicio",
+                    "detener_servicio",
+                    "reiniciar_servicio",
+                )
+                if f"HERMES_ACCION={accion}" in comando_legible
+            )
+            activo = codigo_accion != "detener_servicio"
+            estado_nativo = (
+                "active"
+                if activo and self.servidor.sistema_operativo.value == "linux"
+                else "Running"
+                if activo
+                else "inactive"
+                if self.servidor.sistema_operativo.value == "linux"
+                else "Stopped"
+            )
+            salida = (
+                f"HERMES_ACCION={codigo_accion}\n"
+                "nombre_servicio=hermes-prueba.service\n"
+                f"estado={'activo' if activo else 'inactivo'}\n"
+                f"estado_nativo={estado_nativo}\n"
+                "inicio_automatico=true\n"
+            )
+        elif "/proc/stat" in comando_legible or "Win32_Processor" in comando_legible:
             sistema = (
                 "Linux"
                 if self.servidor.sistema_operativo.value == "linux"
@@ -272,6 +312,10 @@ async def test_crud_persistente_permisos_y_auditoria(
             "consultar_proceso",
             "reiniciar_servidor",
             "obtener_diagnostico",
+            "consultar_servicio",
+            "iniciar_servicio",
+            "detener_servicio",
+            "reiniciar_servicio",
         }
         assert acciones_lector.status_code == 200
         assert acciones_lector.json() == []
@@ -302,6 +346,34 @@ async def test_crud_persistente_permisos_y_auditoria(
             assert diagnostico.json()["datos"]["estado"] == "disponible"
             assert diagnostico.json()["datos"]["cpu_porcentaje"] == 18.25
             assert diagnostico.json()["datos"]["tiempo_actividad_segundos"] == 90_061
+
+            servicio = await cliente.post(
+                f"/api/v1/servidores/{servidor['id_servidor']}/acciones/consultar_servicio",
+                auth=autenticacion_admin,
+                json={"parametros": {"nombre_servicio": "hermes-prueba.service"}},
+            )
+            assert servicio.status_code == 200, servicio.text
+            assert servicio.json()["datos"]["estado"] == "activo"
+            assert servicio.json()["datos"]["nombre_servicio"] == "hermes-prueba.service"
+
+        servicio_sin_confirmar = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/detener_servicio",
+            auth=autenticacion_admin,
+            json={"parametros": {"nombre_servicio": "hermes-prueba.service"}},
+        )
+        assert servicio_sin_confirmar.status_code == 400
+        assert servicio_sin_confirmar.json()["codigo"] == "confirmacion_requerida"
+
+        servicio_confirmado = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/detener_servicio",
+            auth=autenticacion_admin,
+            json={
+                "parametros": {"nombre_servicio": "hermes-prueba.service"},
+                "confirmar": True,
+            },
+        )
+        assert servicio_confirmado.status_code == 200, servicio_confirmado.text
+        assert servicio_confirmado.json()["datos"]["estado"] == "inactivo"
 
         parametros_maliciosos = await cliente.post(
             f"/api/v1/servidores/{id_primer_servidor}/acciones/consultar_proceso",
@@ -385,6 +457,8 @@ async def test_crud_persistente_permisos_y_auditoria(
             "consultar_auditoria",
             "comprobar_conexion",
             "consultar_diagnostico",
+            "consultar_servicios",
+            "gestionar_servicios",
         }
 
         rol_auditor = next(item for item in roles.json() if item["nombre"] == "auditor")
@@ -410,6 +484,8 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert "comprobar_conexion_ssh" in acciones
         assert "ejecutar_accion_obtener_identidad" in acciones
         assert "ejecutar_accion_obtener_diagnostico" in acciones
+        assert "ejecutar_accion_consultar_servicio" in acciones
+        assert "ejecutar_accion_detener_servicio" in acciones
         assert "ejecutar_accion_reiniciar_servidor" in acciones
 
         sin_confirmacion = await cliente.delete(
