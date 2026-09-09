@@ -36,8 +36,10 @@ from aplicacion.modelos.servidor import Servidor
 from aplicacion.seguridad.contrasenas import generar_hash_contrasena
 from aplicacion.servicios.gestor_identidades_mensajeria import (
     desactivar_identidad_telegram,
+    vincular_identidad_slack,
     vincular_identidad_telegram,
 )
+from aplicacion.servicios.gestor_slack import GestorSlack
 from aplicacion.servicios.gestor_telegram import GestorTelegram
 
 
@@ -97,12 +99,14 @@ class ContextoTelegramIntegracion:
     motor: AsyncEngine
     fabrica_sesiones: async_sessionmaker[AsyncSession]
     gestor: GestorTelegram
+    gestor_slack: GestorSlack
     prefijo: str
     identificador_autorizado: int
     id_servidor_activo: int
     id_segundo_servidor_activo: int
     id_servidor_inactivo: int
     id_grupo: int
+    identidad_slack: str
     primer_registro_auditoria: int
 
 
@@ -113,6 +117,8 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
     fabrica_sesiones = crear_fabrica_sesiones(motor)
     prefijo = f"telegram-{uuid4().hex[:10]}"
     identificador_autorizado = 700_000_001
+    identificador_equipo_slack = "T012PRUEBA9"
+    identificador_usuario_slack = "U012PRUEBA9"
 
     async with fabrica_sesiones() as sesion:
         primer_registro = await sesion.scalar(
@@ -179,6 +185,13 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
             identificador_autorizado,
             "usuario_telegram_pruebas",
         )
+        await vincular_identidad_slack(
+            sesion,
+            usuario.nombre_usuario,
+            identificador_equipo_slack,
+            identificador_usuario_slack,
+            "usuario_slack_pruebas",
+        )
         id_servidor_activo = servidor_activo.id_servidor
         id_segundo_servidor_activo = segundo_servidor_activo.id_servidor
         id_servidor_inactivo = servidor_inactivo.id_servidor
@@ -189,16 +202,23 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
         lambda _: TransporteTelegramSimulado(),
         configuracion,
     )
+    gestor_slack = GestorSlack(
+        fabrica_sesiones,
+        lambda _: TransporteTelegramSimulado(),
+        configuracion,
+    )
     contexto = ContextoTelegramIntegracion(
         motor=motor,
         fabrica_sesiones=fabrica_sesiones,
         gestor=gestor,
+        gestor_slack=gestor_slack,
         prefijo=prefijo,
         identificador_autorizado=identificador_autorizado,
         id_servidor_activo=id_servidor_activo,
         id_segundo_servidor_activo=id_segundo_servidor_activo,
         id_servidor_inactivo=id_servidor_inactivo,
         id_grupo=id_grupo,
+        identidad_slack=f"{identificador_equipo_slack}:{identificador_usuario_slack}",
         primer_registro_auditoria=int(primer_registro or 0),
     )
     try:
@@ -421,6 +441,12 @@ async def test_revoca_solo_el_acceso_de_telegram(
             1006,
         )
 
+    nombre_slack = await contexto_telegram_integracion.gestor_slack.comprobar_acceso(
+        contexto_telegram_integracion.identidad_slack,
+        "revocacion",
+    )
+    assert nombre_slack == "Administrador Telegram"
+
     async with contexto_telegram_integracion.fabrica_sesiones() as sesion:
         usuario = await sesion.scalar(
             select(Usuario).where(
@@ -428,7 +454,51 @@ async def test_revoca_solo_el_acceso_de_telegram(
             )
         )
         assert usuario is not None
-        assert usuario.activo is True
+    assert usuario.activo is True
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_slack_y_telegram_reutilizan_inventario_acciones_y_auditoria(
+    contexto_telegram_integracion: ContextoTelegramIntegracion,
+) -> None:
+    resultado = await contexto_telegram_integracion.gestor_slack.ejecutar_accion(
+        contexto_telegram_integracion.identidad_slack,
+        "solicitud-slack-1",
+        contexto_telegram_integracion.id_servidor_activo,
+        "obtener_identidad",
+        SolicitudEjecucionAccion(),
+    )
+    assert resultado.datos == {
+        "usuario": "operador_telegram",
+        "nombre_equipo": "ubuntu-telegram",
+    }
+
+    resultado_multiple = await contexto_telegram_integracion.gestor_slack.ejecutar_accion_multiple(
+        contexto_telegram_integracion.identidad_slack,
+        "solicitud-slack-2",
+        "obtener_identidad",
+        SolicitudEjecucionMultiple(
+            seleccion=SeleccionServidores(id_grupo=contexto_telegram_integracion.id_grupo)
+        ),
+    )
+    assert resultado_multiple.total_servidores == 2
+    assert resultado_multiple.servidores_completados == 2
+
+    async with contexto_telegram_integracion.fabrica_sesiones() as sesion:
+        registros = list(
+            (
+                await sesion.scalars(
+                    select(RegistroAuditoria).where(
+                        RegistroAuditoria.identificador_solicitud.in_(
+                            ["sl:solicitud-slack-1", "sl:solicitud-slack-2"]
+                        )
+                    )
+                )
+            ).all()
+        )
+    assert len(registros) == 3
+    assert all(registro.canal is CanalAuditoria.SLACK for registro in registros)
 
 
 @pytest.mark.integracion

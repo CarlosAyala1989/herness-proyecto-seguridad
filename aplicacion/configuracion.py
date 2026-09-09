@@ -77,9 +77,7 @@ class Configuracion(BaseSettings):
             return self
         token_bot = self.token_bot_slack.get_secret_value() if self.token_bot_slack else ""
         token_aplicacion = (
-            self.token_aplicacion_slack.get_secret_value()
-            if self.token_aplicacion_slack
-            else ""
+            self.token_aplicacion_slack.get_secret_value() if self.token_aplicacion_slack else ""
         )
         if (
             not token_bot.startswith("xoxb-")
@@ -92,9 +90,7 @@ class Configuracion(BaseSettings):
             or len(token_aplicacion) < 20
             or any(caracter.isspace() for caracter in token_aplicacion)
         ):
-            raise ValueError(
-                "Slack está habilitado pero el token de aplicación no es válido."
-            )
+            raise ValueError("Slack está habilitado pero el token de aplicación no es válido.")
         return self
 
     def construir_url_base_datos(self) -> URL:

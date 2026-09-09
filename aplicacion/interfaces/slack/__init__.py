@@ -1,0 +1,1 @@
+"""Interfaz Slack de Hermes."""

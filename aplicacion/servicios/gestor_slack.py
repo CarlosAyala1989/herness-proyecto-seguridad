@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aplicacion.configuracion import Configuracion
 from aplicacion.modelos.enumeraciones import CanalAuditoria, TipoCanalMensajeria
 from aplicacion.servicios.gestor_conexiones import FabricaTransporteRemoto
-from aplicacion.servicios.gestor_telegram import GestorMensajeria
+from aplicacion.servicios.gestor_mensajeria import GestorMensajeria
 
 
 class GestorSlack(GestorMensajeria):
