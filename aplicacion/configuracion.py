@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -44,6 +44,21 @@ class Configuracion(BaseSettings):
     limite_salida_ssh_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
     intervalo_mantenimiento_ssh_segundos: float = Field(default=15.0, gt=0, le=300)
     max_intentos_mantenimiento_ssh: int = Field(default=3, ge=1, le=10)
+
+    telegram_habilitado: bool = False
+    token_telegram: SecretStr | None = None
+    tiempo_confirmacion_telegram_segundos: int = Field(default=60, ge=30, le=300)
+    max_servidores_mostrados_telegram: int = Field(default=50, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validar_configuracion_telegram(self) -> "Configuracion":
+        """Exige un token no vacío únicamente cuando Telegram está habilitado."""
+
+        if self.telegram_habilitado:
+            token = self.token_telegram.get_secret_value() if self.token_telegram else ""
+            if len(token) < 20:
+                raise ValueError("Telegram está habilitado pero su token no es válido.")
+        return self
 
     def construir_url_base_datos(self) -> URL:
         """Construye la URL sin concatenar ni registrar la contraseña en texto claro."""

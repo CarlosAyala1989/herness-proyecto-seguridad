@@ -17,7 +17,7 @@ from aplicacion.seguridad.contrasenas import (
     ejecutar_verificacion_simulada,
     verificar_contrasena,
 )
-from aplicacion.servicios.auditoria import preparar_registro_auditoria
+from aplicacion.servicios.auditoria import ContextoAuditoria, preparar_registro_auditoria
 
 esquema_basico = HTTPBasic(auto_error=False)
 
@@ -66,9 +66,10 @@ UsuarioActual = Annotated[Usuario, Depends(obtener_usuario_actual)]
 
 async def comprobar_permiso_usuario(
     sesion: AsyncSession,
-    solicitud: Request,
+    solicitud: Request | None,
     usuario: Usuario,
     codigo_permiso: str,
+    contexto_auditoria: ContextoAuditoria | None = None,
 ) -> None:
     """Comprueba un permiso conocido y audita cualquier denegación."""
 
@@ -84,6 +85,7 @@ async def comprobar_permiso_usuario(
         resultado=ResultadoAuditoria.DENEGADO,
         solicitud=solicitud,
         detalle=f"Permiso requerido: {codigo_permiso}.",
+        contexto=contexto_auditoria,
     )
     await sesion.commit()
     raise ErrorPermisoDenegado(codigo_permiso)

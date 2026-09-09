@@ -9,7 +9,8 @@ from aplicacion.acciones.registro import (
     listar_definiciones_acciones,
     obtener_definicion_accion,
 )
-from aplicacion.errores import ErrorConfirmacionRequerida, ErrorHermes
+from aplicacion.configuracion import Configuracion
+from aplicacion.errores import ErrorConfirmacionRequerida, ErrorHermes, ErrorServidorInactivo
 from aplicacion.esquemas.acciones import (
     AccionDisponibleRespuesta,
     ResultadoAccionRespuesta,
@@ -19,7 +20,7 @@ from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import ResultadoAuditoria, TipoRecursoAuditoria
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
-from aplicacion.servicios.auditoria import preparar_registro_auditoria
+from aplicacion.servicios.auditoria import ContextoAuditoria, preparar_registro_auditoria
 from aplicacion.servicios.gestor_conexiones import (
     FabricaTransporteRemoto,
     obtener_adaptador,
@@ -44,7 +45,8 @@ def listar_acciones_para_usuario(usuario: Usuario) -> list[AccionDisponibleRespu
 
 async def _auditar_resultado(
     sesion: AsyncSession,
-    solicitud: Request,
+    solicitud: Request | None,
+    contexto_auditoria: ContextoAuditoria | None,
     usuario: Usuario,
     servidor: Servidor,
     definicion: DefinicionAccion,
@@ -60,6 +62,7 @@ async def _auditar_resultado(
         resultado=resultado,
         solicitud=solicitud,
         detalle=detalle,
+        contexto=contexto_auditoria,
     )
     await sesion.commit()
 
@@ -70,8 +73,10 @@ async def ejecutar_accion_servidor(
     codigo_accion: str,
     datos_solicitud: SolicitudEjecucionAccion,
     usuario: Usuario,
-    solicitud: Request,
+    solicitud: Request | None,
     fabrica_transporte: FabricaTransporteRemoto,
+    configuracion: Configuracion,
+    contexto_auditoria: ContextoAuditoria | None = None,
 ) -> ResultadoAccionRespuesta:
     """Ejecuta solo una definición registrada, autorizada y validada."""
 
@@ -81,8 +86,21 @@ async def ejecutar_accion_servidor(
         solicitud,
         usuario,
         definicion.codigo_permiso,
+        contexto_auditoria,
     )
     servidor = await obtener_servidor(sesion, id_servidor)
+    if not servidor.activo:
+        await _auditar_resultado(
+            sesion,
+            solicitud,
+            contexto_auditoria,
+            usuario,
+            servidor,
+            definicion,
+            ResultadoAuditoria.DENEGADO,
+            "El servidor está inactivo en el inventario.",
+        )
+        raise ErrorServidorInactivo()
 
     try:
         parametros = definicion.validar_parametros(datos_solicitud.parametros)
@@ -90,6 +108,7 @@ async def ejecutar_accion_servidor(
         await _auditar_resultado(
             sesion,
             solicitud,
+            contexto_auditoria,
             usuario,
             servidor,
             definicion,
@@ -102,6 +121,7 @@ async def ejecutar_accion_servidor(
         await _auditar_resultado(
             sesion,
             solicitud,
+            contexto_auditoria,
             usuario,
             servidor,
             definicion,
@@ -116,8 +136,8 @@ async def ejecutar_accion_servidor(
     try:
         resultado_remoto = await transporte.ejecutar_comando_controlado(
             accion_preparada.comando,
-            solicitud.app.state.configuracion.tiempo_operacion_ssh_segundos,
-            solicitud.app.state.configuracion.limite_salida_ssh_bytes,
+            configuracion.tiempo_operacion_ssh_segundos,
+            configuracion.limite_salida_ssh_bytes,
         )
         resultado_normalizado = adaptador.interpretar_accion(
             definicion.codigo,
@@ -127,6 +147,7 @@ async def ejecutar_accion_servidor(
         await _auditar_resultado(
             sesion,
             solicitud,
+            contexto_auditoria,
             usuario,
             servidor,
             definicion,
@@ -140,6 +161,7 @@ async def ejecutar_accion_servidor(
     await _auditar_resultado(
         sesion,
         solicitud,
+        contexto_auditoria,
         usuario,
         servidor,
         definicion,

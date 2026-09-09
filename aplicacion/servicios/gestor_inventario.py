@@ -40,16 +40,14 @@ async def listar_servidores(
     *,
     desplazamiento: int,
     limite: int,
+    solo_activos: bool = False,
 ) -> list[Servidor]:
     """Lista servidores sin imponer un máximo fijo al inventario."""
 
-    consulta = (
-        select(Servidor)
-        .options(selectinload(Servidor.grupos))
-        .order_by(Servidor.nombre)
-        .offset(desplazamiento)
-        .limit(limite)
-    )
+    consulta = select(Servidor).options(selectinload(Servidor.grupos))
+    if solo_activos:
+        consulta = consulta.where(Servidor.activo.is_(True))
+    consulta = consulta.order_by(Servidor.nombre).offset(desplazamiento).limit(limite)
     return list((await sesion.scalars(consulta)).all())
 
 

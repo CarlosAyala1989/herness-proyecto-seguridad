@@ -55,6 +55,17 @@ class ErrorNoAutenticado(ErrorHermes):
         )
 
 
+class ErrorIdentidadMensajeriaNoAutorizada(ErrorHermes):
+    """Rechaza identidades externas que no estén vinculadas y activas."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Esta identidad no está autorizada para utilizar Hermes.",
+            codigo="identidad_mensajeria_no_autorizada",
+            estado_http=HTTPStatus.FORBIDDEN,
+        )
+
+
 class ErrorPermisoDenegado(ErrorHermes):
     """Indica que un usuario autenticado no tiene el permiso requerido."""
 
@@ -75,6 +86,17 @@ class ErrorRecursoNoEncontrado(ErrorHermes):
             f"No se encontró el recurso de tipo {tipo_recurso}.",
             codigo="recurso_no_encontrado",
             estado_http=HTTPStatus.NOT_FOUND,
+        )
+
+
+class ErrorServidorInactivo(ErrorHermes):
+    """Impide operar un servidor deshabilitado en el inventario."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El servidor está inactivo en el inventario.",
+            codigo="servidor_inactivo",
+            estado_http=HTTPStatus.CONFLICT,
         )
 
 

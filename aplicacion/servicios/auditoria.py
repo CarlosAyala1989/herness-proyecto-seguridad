@@ -1,5 +1,7 @@
 """Registro central de acciones auditables."""
 
+from dataclasses import dataclass
+
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,15 @@ from aplicacion.modelos.enumeraciones import (
     TipoRecursoAuditoria,
 )
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
+
+
+@dataclass(frozen=True, slots=True)
+class ContextoAuditoria:
+    """Origen normalizado de una operación ajena o interna a HTTP."""
+
+    canal: CanalAuditoria
+    direccion_origen: str | None
+    identificador_solicitud: str | None
 
 
 def preparar_registro_auditoria(
@@ -23,6 +34,7 @@ def preparar_registro_auditoria(
     id_recurso: int | None = None,
     detalle: str | None = None,
     canal: CanalAuditoria = CanalAuditoria.API,
+    contexto: ContextoAuditoria | None = None,
 ) -> RegistroAuditoria:
     """Añade un registro seguro a la misma transacción que la acción."""
 
@@ -35,6 +47,10 @@ def preparar_registro_auditoria(
             "identificador_solicitud",
             None,
         )
+    if contexto is not None:
+        canal = contexto.canal
+        direccion_origen = contexto.direccion_origen
+        identificador_solicitud = contexto.identificador_solicitud
 
     registro = RegistroAuditoria(
         id_usuario=usuario.id_usuario if usuario else None,

@@ -50,4 +50,5 @@ async def ejecutar_accion(
         usuario,
         solicitud,
         solicitud.app.state.fabrica_transporte_remoto,
+        solicitud.app.state.configuracion,
     )
