@@ -64,6 +64,31 @@ async def obtener_usuario_actual(
 UsuarioActual = Annotated[Usuario, Depends(obtener_usuario_actual)]
 
 
+async def comprobar_permiso_usuario(
+    sesion: AsyncSession,
+    solicitud: Request,
+    usuario: Usuario,
+    codigo_permiso: str,
+) -> None:
+    """Comprueba un permiso conocido y audita cualquier denegación."""
+
+    permisos = {permiso.codigo for rol in usuario.roles for permiso in rol.permisos}
+    if codigo_permiso in permisos:
+        return
+
+    preparar_registro_auditoria(
+        sesion,
+        usuario=usuario,
+        accion="comprobar_permiso",
+        tipo_recurso=TipoRecursoAuditoria.PERMISO,
+        resultado=ResultadoAuditoria.DENEGADO,
+        solicitud=solicitud,
+        detalle=f"Permiso requerido: {codigo_permiso}.",
+    )
+    await sesion.commit()
+    raise ErrorPermisoDenegado(codigo_permiso)
+
+
 def exigir_permiso(
     codigo_permiso: str,
 ) -> Callable[..., Awaitable[Usuario]]:
@@ -74,20 +99,12 @@ def exigir_permiso(
         usuario: UsuarioActual,
         sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
     ) -> Usuario:
-        permisos = {permiso.codigo for rol in usuario.roles for permiso in rol.permisos}
-        if codigo_permiso in permisos:
-            return usuario
-
-        preparar_registro_auditoria(
+        await comprobar_permiso_usuario(
             sesion,
-            usuario=usuario,
-            accion="comprobar_permiso",
-            tipo_recurso=TipoRecursoAuditoria.PERMISO,
-            resultado=ResultadoAuditoria.DENEGADO,
-            solicitud=solicitud,
-            detalle=f"Permiso requerido: {codigo_permiso}.",
+            solicitud,
+            usuario,
+            codigo_permiso,
         )
-        await sesion.commit()
-        raise ErrorPermisoDenegado(codigo_permiso)
+        return usuario
 
     return comprobar_permiso

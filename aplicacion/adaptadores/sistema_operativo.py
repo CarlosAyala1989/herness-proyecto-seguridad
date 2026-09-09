@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from aplicacion.acciones.registro import CodigoAccion, ParametrosAccion
+from aplicacion.adaptadores.acciones import AccionRemotaPreparada
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
 from aplicacion.modelos.enumeraciones import SistemaOperativo
 
@@ -27,3 +29,17 @@ class AdaptadorSistemaOperativo(Protocol):
         resultado: ResultadoEjecucionRemota,
     ) -> SistemaRemotoDetectado:
         """Valida y normaliza la respuesta de la plataforma."""
+
+    def preparar_accion(
+        self,
+        codigo: CodigoAccion,
+        parametros: ParametrosAccion,
+    ) -> AccionRemotaPreparada:
+        """Genera un comando exclusivamente desde datos ya validados."""
+
+    def interpretar_accion(
+        self,
+        codigo: CodigoAccion,
+        resultado: ResultadoEjecucionRemota,
+    ) -> dict[str, str | int | bool]:
+        """Convierte la salida esperada en datos comunes."""
