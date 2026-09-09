@@ -3,18 +3,18 @@
 ## Objetivo actual
 
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
-persistencia y contratos externos. Telegram, diagnóstico y servicios usan
-esos mismos servicios sin duplicar inventario, autorización, SSH ni auditoría.
-El orquestador múltiple añade concurrencia acotada sin cambiar esos límites.
+persistencia y contratos externos. Telegram y Slack usan los mismos servicios
+de diagnóstico, inventario, autorización, SSH y auditoría. El orquestador
+múltiple añade concurrencia acotada sin cambiar esos límites.
 
 ## Componentes actuales
 
 ```text
-HTTP local ──► rutas FastAPI ────────────┐
-                                         │
-Telegram ──► interfaz/telegram ──► gestor_telegram
-                                         │
-                                         ▼
+HTTP local ──► rutas FastAPI ─────────────────────┐
+Telegram ──► interfaz/telegram ──┐                │
+                                 ├──► gestor_mensajeria
+Slack ─────► interfaz/slack ─────┘                │
+                                                  ▼
                     autenticación, permisos y registro de acciones
                                          │
                  ┌───────────────────────┼───────────────────────┐
@@ -54,10 +54,13 @@ Telegram ──► interfaz/telegram ──► gestor_telegram
   limita la concurrencia y consolida resultados sin propagar fallos.
 - `modelos/identidad_mensajeria.py` vincula un identificador externo inmutable
   con un usuario Hermes sin almacenar tokens ni números telefónicos.
-- `servicios/gestor_telegram.py` es la fachada del backend para el canal: abre
-  sesiones aisladas y delega en los mismos casos de uso que FastAPI.
+- `servicios/gestor_mensajeria.py` es la fachada común: abre sesiones aisladas
+  y delega en los mismos casos de uso que FastAPI. `gestor_telegram.py` y
+  `gestor_slack.py` solo fijan identidad, límites y canal de auditoría.
 - `interfaces/telegram/` solo interpreta comandos, botones y respuestas. Se
   ejecuta por sondeo saliente y no publica un webhook ni puertos nuevos.
+- `interfaces/slack/` traduce `/hermes` y botones mediante Bolt asíncrono. Usa
+  Socket Mode saliente y tampoco publica puertos.
 - `conexiones/transporte_ssh.py` contiene la conexión AsyncSSH, la doble
   validación de host, los plazos y la recolección acotada de salida.
 - `conexiones/credenciales.py` resuelve referencias de archivo confinadas o el
@@ -78,12 +81,12 @@ Telegram ──► interfaz/telegram ──► gestor_telegram
 - `interfaces/` contiene los contratos y las adaptaciones de mensajería; no
   contiene comandos del sistema ni reglas de permisos.
 
-## Límites preparados para hitos posteriores
+## Canales sobre el backend común
 
 ```text
 Telegram ─┐
           ├──► backend común ─► autorización ─► operaciones controladas
-Slack ────┘       (hito 9)                       │
+Slack ────┘                                      │
                                                  ▼
                                       transporte remoto
                                                  │
@@ -93,10 +96,10 @@ Slack ────┘       (hito 9)                       │
 ```
 
 `CanalMensajeria` define la salida mínima de un canal. `TransporteRemoto`
-normaliza disponibilidad, ejecución acotada y cierre; AsyncSSH ya implementa
-ese puerto. Telegram ya traduce mensajes hacia casos de uso del backend. La
-selección de órdenes remotas, los permisos y la auditoría no residen en el bot;
-su interfaz solo mantiene la selección conversacional y el desafío efímero de
+normaliza disponibilidad, ejecución acotada y cierre; AsyncSSH implementa ese
+puerto. Telegram y Slack traducen mensajes hacia la misma fachada. La selección
+de órdenes remotas, los permisos y la auditoría no residen en los bots; cada
+interfaz solo mantiene la selección conversacional y el desafío efímero de
 confirmación.
 
 El contrato de transporte no asume Linux. Los adaptadores verifican la
@@ -157,6 +160,15 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   identidades conservadas temporalmente por su limitador.
 - El token Telegram es `SecretStr`, se exige solo al habilitar el canal y nunca
   se incorpora a mensajes, auditoría ni registros.
+- Slack combina `team_id` y `user_id`, exige mensajes directos y vuelve a
+  comprobar el vínculo persistente en cada interacción. El nombre, correo y
+  teléfono no conceden acceso.
+- Bolt confirma comandos y botones antes de cualquier consulta o conexión
+  remota. Socket Mode valida el sobre autenticado sin exponer un endpoint HTTP.
+- Los tokens `xoxb-` y `xapp-` son `SecretStr`; el manifiesto solicita solo
+  `commands`, `chat:write` y `connections:write` en el token correspondiente.
+- Las confirmaciones Slack son aleatorias, caducables, de un solo uso y quedan
+  ligadas a la identidad y a destinos fijados antes de mostrar los botones.
 - Cada ruta de inventario exige un permiso persistente. Los rechazos de
   autenticación y autorización también generan auditoría cuando existe un
   usuario identificable.
@@ -172,10 +184,9 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
 Hermes no ejecuta órdenes directamente en su propio proceso. El Ubuntu del
 laboratorio ya se comprobó mediante OpenSSH, autenticación por clave y
 verificación estricta de la clave del host. Las acciones son predefinidas,
-autorizadas y auditadas. Telegram identifica al usuario por su identificador
-numérico inmutable y delega la acción al backend. El número de teléfono no es
-un dato fiable ni siempre está disponible para bots, por lo que no se usa para
-autorizar.
+autorizadas y auditadas. Telegram usa el identificador numérico; Slack combina
+el espacio y usuario inmutables. Ambos delegan al backend y ninguno autoriza
+por número telefónico.
 
 Este flujo trata al anfitrión como otro servidor Linux del inventario. Así se
 prueba el recorrido completo localmente sin crear una excepción insegura para

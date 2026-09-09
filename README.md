@@ -4,11 +4,11 @@ Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
 hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
 de acciones administrativas controladas, diagnóstico, administración de
-servicios y operaciones múltiples desde Telegram.
+servicios y operaciones múltiples desde Telegram y Slack.
 
 ## Estado actual
 
-Hitos 1 a 8 completados. Hermes 0.8.0 proporciona:
+Hitos 1 a 9 completados. Hermes 0.9.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -44,13 +44,17 @@ Hitos 1 a 8 completados. Hermes 0.8.0 proporciona:
 - selección individual, por grupo o de todos los servidores activos;
 - operaciones concurrentes con máximo y plazo individual configurables;
 - aislamiento de fallos, resultados consolidados y auditoría por servidor;
-- selección múltiple y respuestas divididas de forma segura en Telegram.
+- selección múltiple y respuestas divididas de forma segura en Telegram;
+- Slack Bolt asíncrono mediante Socket Mode saliente;
+- comando `/hermes` con selección y acciones equivalentes a Telegram;
+- autorización por espacio de trabajo y usuario Slack vinculados en MariaDB;
+- confirmaciones interactivas, límites y auditoría identificada como Slack.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 `obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
 `detener_servicio`, `reiniciar_servicio` y `reiniciar_servidor`. Telegram ya
 reutiliza esas acciones sobre un servidor, un grupo o todos los servidores
-activos. Slack se incorporará en el hito 9.
+activos desde Telegram y Slack.
 
 ## Requisitos locales
 
@@ -136,6 +140,8 @@ El catálogo y sus controles se describen en
 [`documentacion/motor_acciones.md`](documentacion/motor_acciones.md).
 La activación y el uso del bot se explican en
 [`documentacion/telegram.md`](documentacion/telegram.md).
+La creación, vinculación y uso de la aplicación Slack se explica en
+[`documentacion/slack.md`](documentacion/slack.md).
 La obtención y normalización de métricas se detalla en
 [`documentacion/diagnostico.md`](documentacion/diagnostico.md).
 La preparación de cuentas y administración de servicios se explica en

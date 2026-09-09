@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 a 8 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 9 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -16,6 +16,8 @@ usa su API asíncrona con el controlador `asyncmy`; Alembic mantiene el esquema 
 `pwdlib` protege las contraseñas locales mediante Argon2.
 AsyncSSH aporta el cliente asíncrono y reutilizable para Linux y Windows Server.
 `python-telegram-bot` 22.8 proporciona la interfaz asíncrona con Telegram.
+Slack Bolt 1.30.0 y `aiohttp` 3.14.3 proporcionan la interfaz asíncrona de
+Socket Mode sin requerir un endpoint público.
 
 Referencias de la selección:
 
@@ -28,6 +30,8 @@ Referencias de la selección:
 - [Documentación de AsyncSSH](https://asyncssh.readthedocs.io/en/stable/)
 - [Documentación de python-telegram-bot](https://docs.python-telegram-bot.org/en/stable/)
 - [API oficial para bots de Telegram](https://core.telegram.org/bots/api)
+- [Slack Bolt para Python](https://docs.slack.dev/tools/bolt-python/)
+- [Socket Mode con Slack Bolt](https://docs.slack.dev/tools/bolt-python/concepts/socket-mode/)
 - [Configuración con Pydantic](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - [Variables de la imagen oficial de MariaDB](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables)
 
@@ -184,7 +188,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -232,7 +236,8 @@ curl --user administrador_local \
 
 No inicies el backend con `--host 0.0.0.0`: HTTP Basic debe quedar limitado a
 `127.0.0.1` mientras no exista una terminación TLS. Telegram utiliza su propia
-identidad persistente y delega los permisos al mismo backend.
+identidad persistente y delega los permisos al mismo backend; Slack aplica el
+mismo principio.
 
 Si MariaDB no está disponible, `/salud` responde con estado HTTP `503` y un
 mensaje controlado. No devuelve la URL de conexión ni la contraseña.
@@ -283,7 +288,40 @@ disponibles cuando la referencia del servidor los requiera.
 Consulta `documentacion/telegram.md` para registrar el Ubuntu anfitrión y probar
 los comandos sin ejecutar un reinicio.
 
-## 9. Ejecutar comprobaciones
+## 9. Activar Slack
+
+Crea una aplicación de laboratorio mediante
+`infraestructura/manifiesto_slack.ejemplo.yaml`, instala el bot y guarda los
+tokens únicamente en `.env`:
+
+```dotenv
+HERMES_SLACK_HABILITADO=true
+HERMES_TOKEN_BOT_SLACK=xoxb_token_real_del_laboratorio
+HERMES_TOKEN_APLICACION_SLACK=xapp_token_real_del_laboratorio
+```
+
+Inicia el canal en una terminal dedicada:
+
+```bash
+source .venv/bin/activate
+python -m aplicacion.interfaces.slack
+```
+
+Envía `/hermes ayuda` por mensaje directo. Usa los identificadores indicados en
+la denegación inicial para autorizar la cuenta desde otra terminal:
+
+```bash
+python -m aplicacion.comandos.vincular_usuario_slack \
+  --usuario administrador_local \
+  --identificador-equipo T012ABCDEF \
+  --identificador-usuario U012ABCDEF
+```
+
+Slack utiliza Socket Mode saliente: no abras puertos del router ni expongas el
+backend. Consulta `documentacion/slack.md` para crear la aplicación con permisos
+mínimos, probar comandos y revocar una vinculación.
+
+## 10. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -306,12 +344,14 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 8 incorpora selección individual, por grupo o de todos los servidores
-activos, ejecución concurrente acotada, plazos individuales, consolidación y
-auditoría por destino mediante la API y Telegram comunes.
+El hito 9 añade Slack Bolt mediante Socket Mode, vinculación persistente por
+espacio y usuario, comandos equivalentes y auditoría diferenciada. Slack,
+Telegram y FastAPI reutilizan inventario, permisos, acciones, concurrencia, SSH
+y MariaDB.
 
 Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
 un usuario vinculado y servidores activos. El reinicio requiere permiso y una
 confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
 planificado expresamente. Las mutaciones de servicios también exigen permiso,
-confirmación y privilegios remotos limitados. Slack corresponde al hito 9.
+confirmación y privilegios remotos limitados. El monitoreo automático y las
+alertas corresponden al hito 10.

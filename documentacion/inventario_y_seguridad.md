@@ -1,7 +1,7 @@
 # Inventario y seguridad
 
 Este documento describe el inventario y el modelo de acceso incorporados desde
-el hito 2 y ampliados hasta el hito 8. Todas las rutas HTTP funcionales usan el
+el hito 2 y ampliados hasta el hito 9. Todas las rutas HTTP funcionales usan el
 prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
 correspondiente en MariaDB.
 
@@ -26,6 +26,8 @@ servidores ──< servidores_grupos >── grupos_servidores
   origen e identificador de solicitud.
 - `identidades_mensajeria` vincula como máximo una identidad de cada canal con
   cada usuario. El identificador externo no puede pertenecer a dos usuarios.
+  Telegram conserva su identificador numérico; Slack conserva la combinación
+  `team_id:user_id`, por lo que una cuenta de otro espacio no hereda acceso.
 
 Las migraciones versionadas son la fuente de verdad del esquema. Se aplican con:
 
