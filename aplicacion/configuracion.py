@@ -56,7 +56,7 @@ class Configuracion(BaseSettings):
 
         if self.telegram_habilitado:
             token = self.token_telegram.get_secret_value() if self.token_telegram else ""
-            if len(token) < 20:
+            if len(token) < 20 or ":" not in token or any(caracter.isspace() for caracter in token):
                 raise ValueError("Telegram está habilitado pero su token no es válido.")
         return self
 

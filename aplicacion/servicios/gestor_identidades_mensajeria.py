@@ -67,8 +67,13 @@ async def vincular_identidad_telegram(
 ) -> IdentidadMensajeria:
     """Crea o actualiza el único vínculo Telegram de un usuario Hermes."""
 
-    if identificador_telegram <= 0:
-        raise ErrorConflictoDatos("El identificador de Telegram debe ser un entero positivo.")
+    if not 1 <= identificador_telegram <= 9_223_372_036_854_775_807:
+        raise ErrorConflictoDatos("El identificador de Telegram está fuera del rango permitido.")
+    nombre_normalizado = nombre_telegram.strip() if nombre_telegram else None
+    if nombre_normalizado and (
+        len(nombre_normalizado) > 100 or not nombre_normalizado.isprintable()
+    ):
+        raise ErrorConflictoDatos("El nombre de Telegram no es válido.")
     usuario = await sesion.scalar(
         select(Usuario).where(Usuario.nombre_usuario == nombre_usuario.strip().lower())
     )
@@ -96,13 +101,13 @@ async def vincular_identidad_telegram(
             usuario=usuario,
             canal=TipoCanalMensajeria.TELEGRAM,
             identificador_externo=identificador,
-            nombre_externo=nombre_telegram,
+            nombre_externo=nombre_normalizado,
             activo=True,
         )
         sesion.add(identidad)
     else:
         identidad.identificador_externo = identificador
-        identidad.nombre_externo = nombre_telegram
+        identidad.nombre_externo = nombre_normalizado
         identidad.activo = True
 
     preparar_registro_auditoria(

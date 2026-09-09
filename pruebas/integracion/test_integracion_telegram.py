@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import (
+    ErrorConflictoDatos,
     ErrorIdentidadMensajeriaNoAutorizada,
     ErrorPermisoDenegado,
     ErrorServidorInactivo,
@@ -286,3 +287,24 @@ async def test_revoca_solo_el_acceso_de_telegram(
         )
         assert usuario is not None
         assert usuario.activo is True
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_rechaza_datos_de_vinculacion_fuera_de_limites(
+    contexto_telegram_integracion: ContextoTelegramIntegracion,
+) -> None:
+    async with contexto_telegram_integracion.fabrica_sesiones() as sesion:
+        with pytest.raises(ErrorConflictoDatos):
+            await vincular_identidad_telegram(
+                sesion,
+                f"{contexto_telegram_integracion.prefijo}-usuario",
+                10**100,
+            )
+        with pytest.raises(ErrorConflictoDatos):
+            await vincular_identidad_telegram(
+                sesion,
+                f"{contexto_telegram_integracion.prefijo}-usuario",
+                contexto_telegram_integracion.identificador_autorizado,
+                "x" * 101,
+            )

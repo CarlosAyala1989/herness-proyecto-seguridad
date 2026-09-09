@@ -256,6 +256,15 @@ def test_configuracion_protege_y_exige_token_telegram() -> None:
     )
     assert valor_token not in repr(configuracion)
 
+    with pytest.raises(ValidationError):
+        Configuracion(
+            nombre_base_datos="hermes_pruebas",
+            usuario_base_datos="usuario_pruebas",
+            contrasena_base_datos="contrasena_pruebas",
+            telegram_habilitado=True,
+            token_telegram=valor_token + "\nno_valido",
+        )
+
 
 def test_construye_cliente_sin_abrir_la_red(configuracion_telegram: Configuracion) -> None:
     gestor = AsyncMock(spec=GestorTelegram)
