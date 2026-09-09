@@ -100,17 +100,17 @@ Write-Output "nombre_equipo=$nombre_equipo"
             CodigoAccion.CONSULTAR_SERVICIO: "",
             CodigoAccion.INICIAR_SERVICIO: (
                 "Start-Service -InputObject $servicio -ErrorAction Stop\n"
-                "$servicio.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, "
+                "$servicio.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, "
                 "[TimeSpan]::FromSeconds(8))"
             ),
             CodigoAccion.DETENER_SERVICIO: (
                 "Stop-Service -InputObject $servicio -Confirm:$false -ErrorAction Stop\n"
-                "$servicio.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, "
+                "$servicio.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, "
                 "[TimeSpan]::FromSeconds(8))"
             ),
             CodigoAccion.REINICIAR_SERVICIO: (
                 "Restart-Service -InputObject $servicio -Confirm:$false -ErrorAction Stop\n"
-                "$servicio.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, "
+                "$servicio.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, "
                 "[TimeSpan]::FromSeconds(8))"
             ),
         }
