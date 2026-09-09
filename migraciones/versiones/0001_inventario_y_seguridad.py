@@ -355,22 +355,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Elimina el esquema inicial persistente de Hermes."""
 
-    op.drop_index(
-        "ix_registros_auditoria_identificador_solicitud",
-        table_name="registros_auditoria",
-    )
-    op.drop_index("ix_registros_auditoria_id_usuario", table_name="registros_auditoria")
-    op.drop_index("ix_registros_auditoria_creado_en", table_name="registros_auditoria")
-    op.drop_index("ix_registros_auditoria_accion", table_name="registros_auditoria")
+    # MariaDB elimina automáticamente los índices de cada tabla. Intentar quitar
+    # antes el índice de una clave foránea produce el error 1553.
     op.drop_table("registros_auditoria")
     op.drop_table("servidores_grupos")
     op.drop_table("usuarios_roles")
     op.drop_table("roles_permisos")
-    op.drop_index("ix_servidores_sistema_operativo", table_name="servidores")
-    op.drop_index("ix_servidores_activo", table_name="servidores")
     op.drop_table("servidores")
     op.drop_table("grupos_servidores")
-    op.drop_index("ix_usuarios_activo", table_name="usuarios")
     op.drop_table("usuarios")
     op.drop_table("roles")
     op.drop_table("permisos")
