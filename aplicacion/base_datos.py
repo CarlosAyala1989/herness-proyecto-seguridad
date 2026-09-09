@@ -3,7 +3,12 @@
 from time import perf_counter
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from aplicacion.configuracion import Configuracion
 
@@ -18,6 +23,19 @@ def crear_motor_base_datos(configuracion: Configuracion) -> AsyncEngine:
         connect_args={
             "connect_timeout": configuracion.tiempo_espera_base_datos_segundos,
         },
+    )
+
+
+def crear_fabrica_sesiones(
+    motor_base_datos: AsyncEngine,
+) -> async_sessionmaker[AsyncSession]:
+    """Crea sesiones independientes y no compartidas entre solicitudes."""
+
+    return async_sessionmaker(
+        bind=motor_base_datos,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
     )
 
 

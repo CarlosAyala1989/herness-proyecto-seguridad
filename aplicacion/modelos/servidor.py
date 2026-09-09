@@ -66,5 +66,11 @@ class Servidor(FechasRegistro, ModeloBase):
         lazy="selectin",
     )
 
+    @property
+    def ids_grupos(self) -> list[int]:
+        """Expone únicamente identificadores para evitar respuestas recursivas."""
+
+        return [grupo.id_grupo for grupo in self.grupos]
+
 
 from aplicacion.modelos.grupo_servidor import GrupoServidor  # noqa: E402

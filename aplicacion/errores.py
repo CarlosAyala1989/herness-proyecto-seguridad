@@ -22,12 +22,14 @@ class ErrorHermes(Exception):
         codigo: str,
         estado_http: int,
         detalles: list[dict[str, Any]] | None = None,
+        cabeceras: dict[str, str] | None = None,
     ) -> None:
         super().__init__(mensaje)
         self.mensaje = mensaje
         self.codigo = codigo
         self.estado_http = estado_http
         self.detalles = detalles
+        self.cabeceras = cabeceras
 
 
 class ErrorBaseDatosNoDisponible(ErrorHermes):
@@ -38,6 +40,63 @@ class ErrorBaseDatosNoDisponible(ErrorHermes):
             "La base de datos no está disponible temporalmente.",
             codigo="base_datos_no_disponible",
             estado_http=HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+
+class ErrorNoAutenticado(ErrorHermes):
+    """Indica que las credenciales de acceso no son válidas."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Las credenciales proporcionadas no son válidas.",
+            codigo="credenciales_no_validas",
+            estado_http=HTTPStatus.UNAUTHORIZED,
+            cabeceras={"WWW-Authenticate": 'Basic realm="Hermes"'},
+        )
+
+
+class ErrorPermisoDenegado(ErrorHermes):
+    """Indica que un usuario autenticado no tiene el permiso requerido."""
+
+    def __init__(self, codigo_permiso: str) -> None:
+        super().__init__(
+            "No tiene permiso para realizar esta operación.",
+            codigo="permiso_denegado",
+            estado_http=HTTPStatus.FORBIDDEN,
+            detalles=[{"permiso_requerido": codigo_permiso}],
+        )
+
+
+class ErrorRecursoNoEncontrado(ErrorHermes):
+    """Indica que una entidad solicitada no existe."""
+
+    def __init__(self, tipo_recurso: str) -> None:
+        super().__init__(
+            f"No se encontró el recurso de tipo {tipo_recurso}.",
+            codigo="recurso_no_encontrado",
+            estado_http=HTTPStatus.NOT_FOUND,
+        )
+
+
+class ErrorConflictoDatos(ErrorHermes):
+    """Indica una colisión con restricciones de integridad."""
+
+    def __init__(self, mensaje: str) -> None:
+        super().__init__(
+            mensaje,
+            codigo="conflicto_de_datos",
+            estado_http=HTTPStatus.CONFLICT,
+        )
+
+
+class ErrorConfirmacionRequerida(ErrorHermes):
+    """Impide una eliminación que no fue confirmada explícitamente."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La operación requiere confirmación explícita.",
+            codigo="confirmacion_requerida",
+            estado_http=HTTPStatus.BAD_REQUEST,
         )
 
 
@@ -52,6 +111,7 @@ def _crear_respuesta_error(
     codigo: str,
     mensaje: str,
     detalles: list[dict[str, Any]] | None = None,
+    cabeceras: dict[str, str] | None = None,
 ) -> JSONResponse:
     contenido: dict[str, Any] = {
         "codigo": codigo,
@@ -60,7 +120,7 @@ def _crear_respuesta_error(
     }
     if detalles:
         contenido["detalles"] = detalles
-    return JSONResponse(status_code=estado_http, content=contenido)
+    return JSONResponse(status_code=estado_http, content=contenido, headers=cabeceras)
 
 
 def _normalizar_errores_validacion(
@@ -94,6 +154,7 @@ def registrar_manejadores_errores(aplicacion: FastAPI) -> None:
             codigo=error.codigo,
             mensaje=error.mensaje,
             detalles=error.detalles,
+            cabeceras=error.cabeceras,
         )
 
     @aplicacion.exception_handler(RequestValidationError)
