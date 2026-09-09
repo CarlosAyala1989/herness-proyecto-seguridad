@@ -58,7 +58,7 @@ memoria_porcentaje=$(awk '/^MemTotal:/ { total=$2 } /^MemAvailable:/ { disponibl
 disco_porcentaje=$(df -Pk / 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')
 [ -n "$disco_porcentaje" ] || disco_porcentaje=$no_disponible
 
-tiempo_actividad_segundos=$(awk '{ printf "%.0f", $1 }' /proc/uptime 2>/dev/null)
+tiempo_actividad_segundos=$(awk '{ split($1, partes, "."); print partes[1] }' /proc/uptime 2>/dev/null)
 [ -n "$tiempo_actividad_segundos" ] || tiempo_actividad_segundos=$no_disponible
 
 version=$(uname -r 2>/dev/null)
