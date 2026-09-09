@@ -36,9 +36,9 @@ Un servidor no contiene una contraseña SSH ni una clave privada. El campo
 `proveedor:identificador`; por ejemplo, `archivo:ubuntu_laboratorio` es un
 identificador demostrativo, no una ruta ni un secreto.
 
-Los tipos admitidos actualmente son `clave_ssh` y `agente_ssh`. La resolución
-de la referencia, la lectura protegida de la clave y la verificación efectiva
-de `huella_clave_host` pertenecen al motor de conexión del hito 3.
+Los tipos admitidos son `clave_ssh` y `agente_ssh`. El motor del hito 3 resuelve
+la referencia de forma confinada, exige permisos seguros y verifica
+`huella_clave_host` además del archivo `known_hosts`.
 
 ## Roles y permisos iniciales
 
@@ -50,6 +50,7 @@ La migración registra estos permisos:
 | `gestionar_inventario` | Crear, editar, asociar y eliminar inventario. |
 | `gestionar_acceso` | Administrar usuarios y asignaciones de roles. |
 | `consultar_auditoria` | Consultar el historial de auditoría. |
+| `comprobar_conexion` | Comprobar SSH y plataforma mediante saludos fijos. |
 
 Los roles iniciales son `administrador`, `operador_inventario` y `auditor`. El
 administrador reúne todos los permisos; el operador puede consultar y gestionar
@@ -77,6 +78,7 @@ para no dejar el sistema sin una vía de administración.
 | `GET /api/v1/roles` | `gestionar_acceso` | Consultar roles y sus permisos. |
 | `GET /api/v1/permisos` | `gestionar_acceso` | Consultar permisos. |
 | `GET /api/v1/auditoria` | `consultar_auditoria` | Consultar registros recientes. |
+| `POST /api/v1/servidores/{id_servidor}/comprobar-conexion` | `comprobar_conexion` | Verificar identidad, autenticación y plataforma. |
 
 Las colecciones aceptan `desplazamiento` y `limite`; el límite por página es
 100, pero no existe un máximo fijo de servidores almacenados.
@@ -94,19 +96,26 @@ curl --user administrador_local \
     "descripcion": "Ubuntu 24.04 del laboratorio autorizado",
     "direccion": "127.0.0.1",
     "puerto_ssh": 22,
-    "usuario_conexion": "operador_hermes",
+    "usuario_conexion": "usuario_laboratorio",
     "sistema_operativo": "linux",
-    "tipo_credencial": "clave_ssh",
-    "referencia_credencial": "archivo:ubuntu_laboratorio",
-    "huella_clave_host": null,
+    "tipo_credencial": "agente_ssh",
+    "referencia_credencial": "agente:predeterminado",
+    "huella_clave_host": "SHA256:ReemplaceEstaHuellaVerificada0000000000000",
     "activo": true
   }' \
   http://127.0.0.1:8000/api/v1/servidores
 ```
 
-Este paso no abre una conexión ni ejecuta comandos. Antes del hito 3 será
-necesario configurar OpenSSH, una cuenta de mínimo privilegio y la huella real
-del host. Antes del hito 5 tampoco existe todavía un bot de Telegram.
+Sustituye usuario y huella por valores verificados. Después se puede solicitar
+la comprobación segura:
+
+```bash
+curl --user administrador_local --request POST \
+  http://127.0.0.1:8000/api/v1/servidores/1/comprobar-conexion
+```
+
+Esta ruta solo ejecuta el saludo interno del adaptador. Antes del hito 5 todavía
+no existe un bot de Telegram.
 
 ## Comportamiento de seguridad
 

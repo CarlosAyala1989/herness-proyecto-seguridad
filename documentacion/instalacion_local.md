@@ -1,18 +1,20 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 y 2 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1, 2 y 3 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
 
-El entorno comprobado utiliza Python 3.12.3. Aunque el equipo también tenga una
-versión de Python más reciente, se debe invocar explícitamente `python3.12` para
-crear el entorno virtual.
+El entorno comprobado utiliza `/usr/bin/python3.12` 3.12.3. El equipo también
+tiene `/usr/local/bin/python3.12` y Python 3.14, pero no deben utilizarse: el
+primero carece del módulo estándar `_ctypes` requerido por AsyncSSH actual y el
+proyecto está acotado a Python 3.12.
 
 Las dependencias directas están fijadas en `pyproject.toml`. MariaDB utiliza la
 imagen oficial `mariadb:11.8.9`, perteneciente a la serie LTS 11.8. SQLAlchemy
 usa su API asíncrona con el controlador `asyncmy`; Alembic mantiene el esquema y
 `pwdlib` protege las contraseñas locales mediante Argon2.
+AsyncSSH aporta el cliente asíncrono y reutilizable para Linux y Windows Server.
 
 Referencias de la selección:
 
@@ -22,6 +24,7 @@ Referencias de la selección:
 - [Migraciones asíncronas con Alembic](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)
 - [Hash de contraseñas en FastAPI](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/#hash-and-verify-the-passwords)
 - [Documentación de pwdlib](https://frankie567.github.io/pwdlib/)
+- [Documentación de AsyncSSH](https://asyncssh.readthedocs.io/en/stable/)
 - [Configuración con Pydantic](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - [Variables de la imagen oficial de MariaDB](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables)
 
@@ -30,8 +33,9 @@ Referencias de la selección:
 Desde la raíz del proyecto:
 
 ```bash
-python3.12 --version
-python3.12 -m venv .venv
+/usr/bin/python3.12 --version
+/usr/bin/python3.12 -c 'import ctypes'
+/usr/bin/python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e '.[desarrollo]'
@@ -98,9 +102,10 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0001 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0002 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
-permisos iniciales de forma reproducible.
+permisos iniciales de forma reproducible. La segunda revisión incorpora el
+permiso `comprobar_conexion`.
 
 ## 5. Crear el primer administrador
 
@@ -120,7 +125,22 @@ Para consultar las opciones sin modificar datos:
 python -m aplicacion.comandos.crear_administrador --help
 ```
 
-## 6. Iniciar el backend
+## 6. Preparar SSH
+
+Hermes admite dos mecanismos:
+
+- `agente_ssh` con la referencia exacta `agente:predeterminado`, recomendado
+  cuando el proceso dispone de `SSH_AUTH_SOCK`;
+- `clave_ssh` con una referencia como `archivo:ubuntu_laboratorio`, que se
+  resuelve dentro de `HERMES_DIRECTORIO_CREDENCIALES_SSH`.
+
+Una clave guardada en archivo debe pertenecer al usuario que ejecuta Hermes,
+tener permisos `600` o más restrictivos y no ser un enlace simbólico. El
+archivo indicado por `HERMES_ARCHIVO_HOSTS_CONOCIDOS_SSH` debe existir antes de
+conectar. Consulta `documentacion/conexiones_ssh.md` para verificar y registrar
+claves de host sin confiar automáticamente en ellas.
+
+## 7. Iniciar el backend
 
 Con el entorno virtual activo:
 
@@ -142,7 +162,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -169,7 +189,7 @@ usarán después su propia identidad y delegarán los permisos al mismo backend.
 Si MariaDB no está disponible, `/salud` responde con estado HTTP `503` y un
 mensaje controlado. No devuelve la URL de conexión ni la contraseña.
 
-## 7. Ejecutar comprobaciones
+## 8. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -177,7 +197,7 @@ Pruebas unitarias, sin depender de Docker:
 pytest --cov=aplicacion --cov-report=term-missing
 ```
 
-Prueba real contra la MariaDB iniciada:
+Pruebas reales contra MariaDB y un servidor SSH efímero local:
 
 ```bash
 pytest -o addopts='' -m integracion -vv
@@ -192,12 +212,11 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 2 incorpora inventario, usuarios, roles, permisos y auditoría
-persistentes. No intenta conectarse a los servidores ni ejecutar operaciones:
-SSH llegará en el hito 3, el motor de comandos en el hito 4 y Telegram en el
-hito 5.
+El hito 3 conecta mediante SSH, comprueba identidad y autenticación, y verifica
+si el servidor responde como Linux o Windows Server. Solo ejecuta saludos de
+detección definidos internamente. El registro de acciones administrativas
+llegará en el hito 4 y Telegram en el hito 5.
 
 Por ello todavía no debe intentarse administrar el Ubuntu anfitrión desde
-Telegram. Cuando esos hitos estén implementados, el equipo se registrará como
-un servidor Linux y se administrará por OpenSSH a través del mismo backend,
-usando operaciones autorizadas y auditadas.
+Telegram. La conexión SSH local ya puede comprobarse desde el backend, pero no
+existe aún una operación para iniciar, detener o modificar recursos del equipo.
