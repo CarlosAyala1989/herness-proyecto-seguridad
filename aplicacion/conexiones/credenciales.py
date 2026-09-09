@@ -69,7 +69,7 @@ class ResolvedorCredencialesSSH:
         datos_archivo = ruta.stat()
         if datos_archivo.st_uid != os.geteuid():
             raise ErrorConfiguracionSSH("La clave SSH debe pertenecer al usuario de Hermes.")
-        if stat.S_IMODE(datos_archivo.st_mode) & 0o077:
+        if stat.S_IMODE(datos_archivo.st_mode) not in {0o400, 0o600}:
             raise ErrorConfiguracionSSH("La clave SSH debe tener permisos 600 o más restrictivos.")
         if datos_archivo.st_size > TAMANO_MAXIMO_CLAVE_PRIVADA:
             raise ErrorConfiguracionSSH("La clave SSH supera el tamaño máximo permitido.")

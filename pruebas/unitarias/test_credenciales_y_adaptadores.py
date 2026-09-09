@@ -46,7 +46,8 @@ def test_resuelve_clave_privada_confinada_y_protegida(tmp_path: Path) -> None:
     ("referencia", "preparar"),
     [
         ("archivo:../fuera", "fuera"),
-        ("archivo:insegura", "permisos"),
+        ("archivo:insegura", "permisos_lectura"),
+        ("archivo:ejecutable", "permisos_ejecucion"),
         ("agente:desconocido", "ninguno"),
     ],
 )
@@ -59,10 +60,14 @@ def test_rechaza_referencias_o_permisos_inseguros(
     directorio.mkdir()
     if preparar == "fuera":
         (tmp_path / "fuera").write_text("dato", encoding="utf-8")
-    elif preparar == "permisos":
+    elif preparar == "permisos_lectura":
         clave = directorio / "insegura"
         clave.write_text("dato", encoding="utf-8")
         clave.chmod(0o644)
+    elif preparar == "permisos_ejecucion":
+        clave = directorio / "ejecutable"
+        clave.write_text("dato", encoding="utf-8")
+        clave.chmod(0o700)
 
     tipo = (
         TipoCredencialConexion.AGENTE_SSH
