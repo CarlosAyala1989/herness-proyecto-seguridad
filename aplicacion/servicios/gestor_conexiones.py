@@ -24,7 +24,7 @@ from aplicacion.servicios.gestor_inventario import obtener_servidor
 FabricaTransporteRemoto = Callable[[Servidor], TransporteRemoto]
 
 
-def _obtener_adaptador(sistema: SistemaOperativo) -> AdaptadorSistemaOperativo:
+def obtener_adaptador(sistema: SistemaOperativo) -> AdaptadorSistemaOperativo:
     if sistema is SistemaOperativo.LINUX:
         return AdaptadorLinux()
     if sistema is SistemaOperativo.WINDOWS_SERVER:
@@ -42,7 +42,7 @@ async def comprobar_conexion_servidor(
     """Verifica SSH y plataforma sin aceptar comandos desde la solicitud."""
 
     servidor = await obtener_servidor(sesion, id_servidor)
-    adaptador = _obtener_adaptador(servidor.sistema_operativo)
+    adaptador = obtener_adaptador(servidor.sistema_operativo)
     transporte = fabrica_transporte(servidor)
     try:
         resultado = await transporte.ejecutar_comando_controlado(
