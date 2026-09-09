@@ -51,3 +51,35 @@ class TipoRecursoAuditoria(StrEnum):
     PERMISO = "permiso"
     ASOCIACION = "asociacion"
     AUTENTICACION = "autenticacion"
+
+
+class TipoAlerta(StrEnum):
+    """Condiciones automáticas que puede detectar el monitor."""
+
+    SERVIDOR_NO_DISPONIBLE = "servidor_no_disponible"
+    CPU_ALTA = "cpu_alta"
+    MEMORIA_ALTA = "memoria_alta"
+    DISCO_ALTO = "disco_alto"
+    SERVICIO_CRITICO_NO_ACTIVO = "servicio_critico_no_activo"
+
+
+class EstadoAlerta(StrEnum):
+    """Ciclo de vida persistente de un episodio de alerta."""
+
+    ACTIVA = "activa"
+    RECUPERADA = "recuperada"
+
+
+class FaseNotificacionAlerta(StrEnum):
+    """Transición que da origen a una notificación."""
+
+    APERTURA = "apertura"
+    RECUPERACION = "recuperacion"
+
+
+class EstadoNotificacionAlerta(StrEnum):
+    """Resultado del envío de una notificación concreta."""
+
+    PENDIENTE = "pendiente"
+    ENVIADA = "enviada"
+    FALLIDA = "fallida"

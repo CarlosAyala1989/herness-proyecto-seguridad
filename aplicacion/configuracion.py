@@ -59,6 +59,12 @@ class Configuracion(BaseSettings):
     tiempo_confirmacion_slack_segundos: int = Field(default=60, ge=30, le=300)
     max_servidores_mostrados_slack: int = Field(default=50, ge=1, le=100)
 
+    monitoreo_habilitado: bool = False
+    intervalo_monitoreo_segundos: float = Field(default=60.0, ge=10, le=86_400)
+    max_concurrencia_monitoreo: int = Field(default=4, ge=1, le=32)
+    tiempo_limite_sondeo_segundos: float = Field(default=45.0, gt=0, le=600)
+    max_intentos_notificacion_alerta: int = Field(default=3, ge=1, le=10)
+
     @model_validator(mode="after")
     def validar_configuracion_telegram(self) -> "Configuracion":
         """Exige un token no vacío únicamente cuando Telegram está habilitado."""
