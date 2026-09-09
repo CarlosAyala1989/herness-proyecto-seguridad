@@ -857,21 +857,17 @@ class InterfazTelegram(CanalMensajeria):
                     codigo_accion,
                     solicitud,
                 )
-                seleccion_fijada = SeleccionServidores(
-                    ids_servidores=[servidor.id_servidor]
-                )
+                seleccion_fijada = SeleccionServidores(ids_servidores=[servidor.id_servidor])
                 descripcion_destino = servidor.nombre
             else:
-                seleccion_fijada, cantidad = (
-                    await self._gestor.comprobar_accion_sensible_multiple(
-                        acceso[0],
-                        acceso[1],
-                        codigo_accion,
-                        SolicitudEjecucionMultiple(
-                            seleccion=seleccion,
-                            parametros=solicitud.parametros,
-                        ),
-                    )
+                seleccion_fijada, cantidad = await self._gestor.comprobar_accion_sensible_multiple(
+                    acceso[0],
+                    acceso[1],
+                    codigo_accion,
+                    SolicitudEjecucionMultiple(
+                        seleccion=seleccion,
+                        parametros=solicitud.parametros,
+                    ),
                 )
                 descripcion_destino = f"{cantidad} servidores"
         except ErrorHermes as error:

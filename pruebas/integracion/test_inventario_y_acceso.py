@@ -59,8 +59,7 @@ class TransporteRemotoSimulado:
                 comando_legible = b64decode(comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
             if "HERMES_ACCION=obtener_identidad" in comando_legible:
                 salida = (
-                    "HERMES_ACCION=obtener_identidad\n"
-                    f"operador_pruebas\n{self.servidor.nombre}\n"
+                    f"HERMES_ACCION=obtener_identidad\noperador_pruebas\n{self.servidor.nombre}\n"
                 )
             elif "HERMES_ACCION=consultar_proceso" in comando_legible:
                 salida = (
@@ -419,11 +418,13 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert [resultado["id_servidor"] for resultado in resumen_multiple["resultados"]] == [
             servidor["id_servidor"] for servidor in servidores
         ]
-        assert resumen_multiple["resultados"][3]["codigo_error"] == (
-            "servidor_ssh_no_disponible"
-        )
-        assert 2 <= TransporteRemotoSimulado.max_ejecuciones_activas <= (
-            contexto_integracion.aplicacion.state.configuracion.max_concurrencia_acciones_multiples
+        assert resumen_multiple["resultados"][3]["codigo_error"] == ("servidor_ssh_no_disponible")
+        assert (
+            2
+            <= TransporteRemotoSimulado.max_ejecuciones_activas
+            <= (
+                contexto_integracion.aplicacion.state.configuracion.max_concurrencia_acciones_multiples
+            )
         )
 
         identificador_accion_multiple = accion_multiple.headers["X-Identificador-Solicitud"]
@@ -452,9 +453,7 @@ async def test_crud_persistente_permisos_y_auditoria(
                 json={"seleccion": {"id_grupo": id_grupo_multiple}},
             )
         finally:
-            configuracion_aplicacion.tiempo_limite_accion_multiple_segundos = (
-                tiempo_limite_anterior
-            )
+            configuracion_aplicacion.tiempo_limite_accion_multiple_segundos = tiempo_limite_anterior
         assert accion_grupo.status_code == 200, accion_grupo.text
         resultados_grupo = accion_grupo.json()["resultados"]
         resultado_lento = next(
@@ -464,6 +463,26 @@ async def test_crud_persistente_permisos_y_auditoria(
         )
         assert resultado_lento["codigo_error"] == "tiempo_limite_accion_multiple"
         assert sum(resultado["estado"] == "completada" for resultado in resultados_grupo) == 2
+
+        desactivar_cuarto = await cliente.patch(
+            f"/api/v1/servidores/{servidores[3]['id_servidor']}",
+            auth=autenticacion_admin,
+            json={"activo": False},
+        )
+        assert desactivar_cuarto.status_code == 200
+        accion_todos = await cliente.post(
+            "/api/v1/acciones-multiples/obtener_identidad",
+            auth=autenticacion_admin,
+            json={"seleccion": {"todos": True}},
+        )
+        assert accion_todos.status_code == 200, accion_todos.text
+        ids_resultados_todos = {
+            resultado["id_servidor"] for resultado in accion_todos.json()["resultados"]
+        }
+        assert {servidor["id_servidor"] for servidor in servidores[:3]}.issubset(
+            ids_resultados_todos
+        )
+        assert servidores[3]["id_servidor"] not in ids_resultados_todos
 
         seleccion_ambigua = await cliente.post(
             "/api/v1/acciones-multiples/obtener_identidad",
@@ -476,6 +495,23 @@ async def test_crud_persistente_permisos_y_auditoria(
             },
         )
         assert seleccion_ambigua.status_code == 422
+
+        maximo_anterior = configuracion_aplicacion.max_servidores_accion_multiple
+        configuracion_aplicacion.max_servidores_accion_multiple = 3
+        try:
+            seleccion_excesiva = await cliente.post(
+                "/api/v1/acciones-multiples/obtener_identidad",
+                auth=autenticacion_admin,
+                json={
+                    "seleccion": {
+                        "ids_servidores": [servidor["id_servidor"] for servidor in servidores]
+                    }
+                },
+            )
+        finally:
+            configuracion_aplicacion.max_servidores_accion_multiple = maximo_anterior
+        assert seleccion_excesiva.status_code == 422
+        assert seleccion_excesiva.json()["codigo"] == "limite_seleccion_servidores_superado"
 
         servicio_sin_confirmar = await cliente.post(
             f"/api/v1/servidores/{id_primer_servidor}/acciones/detener_servicio",

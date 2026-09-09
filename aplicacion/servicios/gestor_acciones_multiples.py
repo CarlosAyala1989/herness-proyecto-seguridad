@@ -66,7 +66,9 @@ async def resolver_objetivos_accion_multiple(
         if len(ids) > maximo_servidores:
             raise ErrorLimiteSeleccionServidores(maximo_servidores)
         consulta = select(Servidor).where(Servidor.id_servidor.in_(ids))
-        encontrados = {servidor.id_servidor: servidor for servidor in await sesion.scalars(consulta)}
+        encontrados = {
+            servidor.id_servidor: servidor for servidor in await sesion.scalars(consulta)
+        }
         objetivos = []
         for id_servidor in ids:
             servidor = encontrados.get(id_servidor)
@@ -90,11 +92,7 @@ async def resolver_objetivos_accion_multiple(
             for servidor in servidores
         ]
     else:
-        consulta = (
-            select(Servidor)
-            .where(Servidor.activo.is_(True))
-            .order_by(Servidor.id_servidor)
-        )
+        consulta = select(Servidor).where(Servidor.activo.is_(True)).order_by(Servidor.id_servidor)
         servidores = list(await sesion.scalars(consulta))
         objetivos = [
             ObjetivoAccionMultiple(
@@ -200,9 +198,7 @@ async def _ejecutar_objetivo(
 
     try:
         async with semaforo:
-            async with asyncio.timeout(
-                configuracion.tiempo_limite_accion_multiple_segundos
-            ):
+            async with asyncio.timeout(configuracion.tiempo_limite_accion_multiple_segundos):
                 async with fabrica_sesiones() as sesion:
                     usuario = await _cargar_usuario(sesion, usuario_inicial.id_usuario)
                     resultado = await ejecutar_accion_servidor(
