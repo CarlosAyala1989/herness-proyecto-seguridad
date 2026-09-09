@@ -1,7 +1,7 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar el hito 1 de Hermes en Ubuntu 24.04. Los
-servicios escuchan únicamente en el equipo local y no requieren una VPS.
+Esta guía permite iniciar y comprobar los hitos 1 y 2 de Hermes en Ubuntu 24.04.
+Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
 
@@ -11,14 +11,17 @@ crear el entorno virtual.
 
 Las dependencias directas están fijadas en `pyproject.toml`. MariaDB utiliza la
 imagen oficial `mariadb:11.8.9`, perteneciente a la serie LTS 11.8. SQLAlchemy
-usa su API asíncrona con el controlador `asyncmy` para no bloquear las futuras
-operaciones concurrentes.
+usa su API asíncrona con el controlador `asyncmy`; Alembic mantiene el esquema y
+`pwdlib` protege las contraseñas locales mediante Argon2.
 
 Referencias de la selección:
 
 - [Versiones de FastAPI](https://fastapi.tiangolo.com/deployment/versions/)
 - [SQLAlchemy asíncrono](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
 - [Dialectos MySQL y MariaDB de SQLAlchemy](https://docs.sqlalchemy.org/en/20/dialects/mysql.html)
+- [Migraciones asíncronas con Alembic](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)
+- [Hash de contraseñas en FastAPI](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/#hash-and-verify-the-passwords)
+- [Documentación de pwdlib](https://frankie567.github.io/pwdlib/)
 - [Configuración con Pydantic](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - [Variables de la imagen oficial de MariaDB](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables)
 
@@ -86,7 +89,38 @@ un volumen que ya fue creado. Si fuera necesario rotarlas más adelante, deberá
 realizarse mediante sentencias administrativas controladas o recreando
 conscientemente el laboratorio; no se debe borrar el volumen por rutina.
 
-## 4. Iniciar el backend
+## 4. Aplicar las migraciones
+
+Con MariaDB disponible y el entorno virtual activo:
+
+```bash
+alembic -c alembic.ini upgrade head
+alembic -c alembic.ini current
+```
+
+La revisión esperada es `0001 (head)`. Las migraciones crean el inventario, los
+usuarios, los roles, los permisos y la auditoría; además registran los roles y
+permisos iniciales de forma reproducible.
+
+## 5. Crear el primer administrador
+
+```bash
+python -m aplicacion.comandos.crear_administrador \
+  --usuario administrador_local \
+  --nombre "Administrador local"
+```
+
+El comando solicita y confirma la contraseña de manera interactiva. No la
+incluyas como argumento ni la escribas en un archivo versionado. La cuenta
+recibe el rol `administrador`, necesario para gestionar el inventario inicial.
+
+Para consultar las opciones sin modificar datos:
+
+```bash
+python -m aplicacion.comandos.crear_administrador --help
+```
+
+## 6. Iniciar el backend
 
 Con el entorno virtual activo:
 
@@ -108,7 +142,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -121,10 +155,21 @@ Cada respuesta incluye la cabecera `X-Identificador-Solicitud`, que permite
 relacionar una respuesta con sus registros sin revelar información sensible.
 La interfaz OpenAPI está en `http://127.0.0.1:8000/documentacion`.
 
+Las rutas de `/api/v1` utilizan HTTP Basic en este laboratorio local. Por
+ejemplo, este comando solicita la contraseña sin dejarla en el historial:
+
+```bash
+curl --user administrador_local http://127.0.0.1:8000/api/v1/servidores
+```
+
+No inicies el backend con `--host 0.0.0.0`: HTTP Basic debe quedar limitado a
+`127.0.0.1` mientras no exista una terminación TLS. Los canales de mensajería
+usarán después su propia identidad y delegarán los permisos al mismo backend.
+
 Si MariaDB no está disponible, `/salud` responde con estado HTTP `503` y un
 mensaje controlado. No devuelve la URL de conexión ni la contraseña.
 
-## 5. Ejecutar comprobaciones
+## 7. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -141,18 +186,18 @@ pytest -o addopts='' -m integracion -vv
 Calidad y formato:
 
 ```bash
-ruff check aplicacion pruebas
-ruff format --check aplicacion pruebas
+ruff check aplicacion migraciones pruebas
+ruff format --check aplicacion migraciones pruebas
 ```
 
 ## Alcance del hito
 
-El hito 1 confirma el proceso HTTP y la conectividad con MariaDB. No crea aún
-tablas funcionales; el modelo, las migraciones, el inventario y los permisos
-se incorporarán en el hito 2. SSH llegará en el hito 3 y Telegram en el hito 5.
+El hito 2 incorpora inventario, usuarios, roles, permisos y auditoría
+persistentes. No intenta conectarse a los servidores ni ejecutar operaciones:
+SSH llegará en el hito 3, el motor de comandos en el hito 4 y Telegram en el
+hito 5.
 
 Por ello todavía no debe intentarse administrar el Ubuntu anfitrión desde
 Telegram. Cuando esos hitos estén implementados, el equipo se registrará como
 un servidor Linux y se administrará por OpenSSH a través del mismo backend,
 usando operaciones autorizadas y auditadas.
-
