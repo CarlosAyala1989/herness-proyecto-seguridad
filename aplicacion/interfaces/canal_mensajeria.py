@@ -8,4 +8,3 @@ class CanalMensajeria(Protocol):
 
     async def enviar_mensaje(self, identificador_destino: str, mensaje: str) -> None:
         """Envía una respuesta sin contener lógica administrativa."""
-

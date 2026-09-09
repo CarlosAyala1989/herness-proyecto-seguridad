@@ -30,4 +30,3 @@ class TransporteRemoto(Protocol):
 
     async def cerrar(self) -> None:
         """Libera la conexión y sus recursos."""
-
