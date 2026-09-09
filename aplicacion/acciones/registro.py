@@ -15,6 +15,10 @@ class CodigoAccion(StrEnum):
     CONSULTAR_PROCESO = "consultar_proceso"
     REINICIAR_SERVIDOR = "reiniciar_servidor"
     OBTENER_DIAGNOSTICO = "obtener_diagnostico"
+    CONSULTAR_SERVICIO = "consultar_servicio"
+    INICIAR_SERVICIO = "iniciar_servicio"
+    DETENER_SERVICIO = "detener_servicio"
+    REINICIAR_SERVICIO = "reiniciar_servicio"
 
 
 class ParametrosAccion(BaseModel):
@@ -31,6 +35,16 @@ class ParametrosConsultaProceso(ParametrosAccion):
     """Identificador numérico seguro de un proceso."""
 
     id_proceso: int = Field(ge=1, le=4_194_304)
+
+
+class ParametrosServicio(ParametrosAccion):
+    """Nombre interno de servicio sin comodines ni metacaracteres de shell."""
+
+    nombre_servicio: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}$",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +94,34 @@ _ACCIONES = {
         codigo_permiso="consultar_diagnostico",
         requiere_confirmacion=False,
         modelo_parametros=ParametrosSinCampos,
+    ),
+    CodigoAccion.CONSULTAR_SERVICIO: DefinicionAccion(
+        codigo=CodigoAccion.CONSULTAR_SERVICIO,
+        descripcion="Consultar el estado de un servicio del sistema.",
+        codigo_permiso="consultar_servicios",
+        requiere_confirmacion=False,
+        modelo_parametros=ParametrosServicio,
+    ),
+    CodigoAccion.INICIAR_SERVICIO: DefinicionAccion(
+        codigo=CodigoAccion.INICIAR_SERVICIO,
+        descripcion="Iniciar un servicio del sistema.",
+        codigo_permiso="gestionar_servicios",
+        requiere_confirmacion=True,
+        modelo_parametros=ParametrosServicio,
+    ),
+    CodigoAccion.DETENER_SERVICIO: DefinicionAccion(
+        codigo=CodigoAccion.DETENER_SERVICIO,
+        descripcion="Detener un servicio del sistema.",
+        codigo_permiso="gestionar_servicios",
+        requiere_confirmacion=True,
+        modelo_parametros=ParametrosServicio,
+    ),
+    CodigoAccion.REINICIAR_SERVICIO: DefinicionAccion(
+        codigo=CodigoAccion.REINICIAR_SERVICIO,
+        descripcion="Reiniciar un servicio del sistema.",
+        codigo_permiso="gestionar_servicios",
+        requiere_confirmacion=True,
+        modelo_parametros=ParametrosServicio,
     ),
 }
 

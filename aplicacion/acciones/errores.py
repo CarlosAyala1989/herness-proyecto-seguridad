@@ -48,3 +48,25 @@ class ErrorRespuestaAccionNoValida(ErrorHermes):
             codigo="respuesta_accion_no_valida",
             estado_http=HTTPStatus.BAD_GATEWAY,
         )
+
+
+class ErrorServicioNoEncontrado(ErrorHermes):
+    """Informa que el nombre validado no corresponde a un servicio remoto."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El servicio solicitado no existe en el servidor.",
+            codigo="servicio_no_encontrado",
+            estado_http=HTTPStatus.NOT_FOUND,
+        )
+
+
+class ErrorGestorServiciosNoDisponible(ErrorHermes):
+    """Evita usar órdenes incompatibles en un sistema sin gestor admitido."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La administración de servicios no está disponible en este sistema.",
+            codigo="gestor_servicios_no_disponible",
+            estado_http=HTTPStatus.NOT_IMPLEMENTED,
+        )
