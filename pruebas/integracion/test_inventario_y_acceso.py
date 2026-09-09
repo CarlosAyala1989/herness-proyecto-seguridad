@@ -1,5 +1,6 @@
 """Recorrido integral de persistencia, permisos e inventario."""
 
+import asyncio
 from base64 import b64decode
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
+from aplicacion.conexiones.errores import ErrorServidorSSHNoDisponible
 from aplicacion.configuracion import Configuracion
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
 from aplicacion.modelos.acceso import Rol, Usuario
@@ -24,6 +26,9 @@ from aplicacion.seguridad.contrasenas import generar_hash_contrasena
 class TransporteRemotoSimulado:
     """Sustituye exclusivamente la red al probar la ruta protegida."""
 
+    ejecuciones_activas = 0
+    max_ejecuciones_activas = 0
+
     def __init__(self, servidor: Servidor) -> None:
         self.servidor = servidor
 
@@ -36,83 +41,98 @@ class TransporteRemotoSimulado:
         tiempo_limite_segundos: float,
         limite_salida_bytes: int,
     ) -> ResultadoEjecucionRemota:
-        assert comando
-        assert tiempo_limite_segundos > 0
-        assert limite_salida_bytes > 0
-        comando_legible = comando
-        if "-EncodedCommand" in comando:
-            comando_legible = b64decode(comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
-        if "HERMES_ACCION=obtener_identidad" in comando_legible:
-            salida = f"HERMES_ACCION=obtener_identidad\noperador_pruebas\n{self.servidor.nombre}\n"
-        elif "HERMES_ACCION=consultar_proceso" in comando_legible:
-            salida = (
-                "HERMES_ACCION=consultar_proceso\n123 python\n"
-                if self.servidor.sistema_operativo.value == "linux"
-                else "HERMES_ACCION=consultar_proceso\n123\npython\n"
-            )
-        elif "HERMES_ACCION=reiniciar_servidor" in comando_legible:
-            salida = "HERMES_ACCION=reiniciar_servidor\nPROGRAMADO\n"
-        elif any(
-            f"HERMES_ACCION={accion}" in comando_legible
-            for accion in (
-                "consultar_servicio",
-                "iniciar_servicio",
-                "detener_servicio",
-                "reiniciar_servicio",
-            )
-        ):
-            codigo_accion = next(
-                accion
+        tipo_transporte = type(self)
+        tipo_transporte.ejecuciones_activas += 1
+        tipo_transporte.max_ejecuciones_activas = max(
+            tipo_transporte.max_ejecuciones_activas,
+            tipo_transporte.ejecuciones_activas,
+        )
+        try:
+            await asyncio.sleep(0.4 if self.servidor.nombre.endswith("-servidor-3") else 0.005)
+            if self.servidor.nombre.endswith("-servidor-4"):
+                raise ErrorServidorSSHNoDisponible()
+            assert comando
+            assert tiempo_limite_segundos > 0
+            assert limite_salida_bytes > 0
+            comando_legible = comando
+            if "-EncodedCommand" in comando:
+                comando_legible = b64decode(comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
+            if "HERMES_ACCION=obtener_identidad" in comando_legible:
+                salida = (
+                    "HERMES_ACCION=obtener_identidad\n"
+                    f"operador_pruebas\n{self.servidor.nombre}\n"
+                )
+            elif "HERMES_ACCION=consultar_proceso" in comando_legible:
+                salida = (
+                    "HERMES_ACCION=consultar_proceso\n123 python\n"
+                    if self.servidor.sistema_operativo.value == "linux"
+                    else "HERMES_ACCION=consultar_proceso\n123\npython\n"
+                )
+            elif "HERMES_ACCION=reiniciar_servidor" in comando_legible:
+                salida = "HERMES_ACCION=reiniciar_servidor\nPROGRAMADO\n"
+            elif any(
+                f"HERMES_ACCION={accion}" in comando_legible
                 for accion in (
                     "consultar_servicio",
                     "iniciar_servicio",
                     "detener_servicio",
                     "reiniciar_servicio",
                 )
-                if f"HERMES_ACCION={accion}" in comando_legible
-            )
-            activo = codigo_accion != "detener_servicio"
-            estado_nativo = (
-                "active"
-                if activo and self.servidor.sistema_operativo.value == "linux"
-                else "Running"
-                if activo
-                else "inactive"
-                if self.servidor.sistema_operativo.value == "linux"
-                else "Stopped"
-            )
-            salida = (
-                f"HERMES_ACCION={codigo_accion}\n"
-                "nombre_servicio=hermes-prueba.service\n"
-                f"estado={'activo' if activo else 'inactivo'}\n"
-                f"estado_nativo={estado_nativo}\n"
-                "inicio_automatico=true\n"
-            )
-        elif "/proc/stat" in comando_legible or "Win32_Processor" in comando_legible:
-            sistema = (
-                "Linux"
-                if self.servidor.sistema_operativo.value == "linux"
-                else "Microsoft Windows Server 2022 Standard"
-            )
-            salida = (
-                "HERMES_ACCION=obtener_diagnostico\n"
-                "estado=disponible\n"
-                "cpu_porcentaje=18.25\n"
-                "memoria_porcentaje=42.50\n"
-                "disco_porcentaje=63\n"
-                "tiempo_actividad_segundos=90061\n"
-                f"sistema={sistema}\n"
-                "version=version-prueba\n"
-                f"nombre_equipo={self.servidor.nombre}\n"
-            )
-        elif self.servidor.sistema_operativo.value == "linux":
-            salida = "HERMES_SO=linux\nLinux\n6.8.0-prueba\nlinux-prueba\n"
-        else:
-            salida = (
-                "HERMES_SO=windows_server\nMicrosoft Windows Server 2022 Standard\n"
-                "10.0.20348\nWINDOWS-PRUEBA\n"
-            )
-        return ResultadoEjecucionRemota(0, salida, "", 0.01)
+            ):
+                codigo_accion = next(
+                    accion
+                    for accion in (
+                        "consultar_servicio",
+                        "iniciar_servicio",
+                        "detener_servicio",
+                        "reiniciar_servicio",
+                    )
+                    if f"HERMES_ACCION={accion}" in comando_legible
+                )
+                activo = codigo_accion != "detener_servicio"
+                estado_nativo = (
+                    "active"
+                    if activo and self.servidor.sistema_operativo.value == "linux"
+                    else "Running"
+                    if activo
+                    else "inactive"
+                    if self.servidor.sistema_operativo.value == "linux"
+                    else "Stopped"
+                )
+                salida = (
+                    f"HERMES_ACCION={codigo_accion}\n"
+                    "nombre_servicio=hermes-prueba.service\n"
+                    f"estado={'activo' if activo else 'inactivo'}\n"
+                    f"estado_nativo={estado_nativo}\n"
+                    "inicio_automatico=true\n"
+                )
+            elif "/proc/stat" in comando_legible or "Win32_Processor" in comando_legible:
+                sistema = (
+                    "Linux"
+                    if self.servidor.sistema_operativo.value == "linux"
+                    else "Microsoft Windows Server 2022 Standard"
+                )
+                salida = (
+                    "HERMES_ACCION=obtener_diagnostico\n"
+                    "estado=disponible\n"
+                    "cpu_porcentaje=18.25\n"
+                    "memoria_porcentaje=42.50\n"
+                    "disco_porcentaje=63\n"
+                    "tiempo_actividad_segundos=90061\n"
+                    f"sistema={sistema}\n"
+                    "version=version-prueba\n"
+                    f"nombre_equipo={self.servidor.nombre}\n"
+                )
+            elif self.servidor.sistema_operativo.value == "linux":
+                salida = "HERMES_SO=linux\nLinux\n6.8.0-prueba\nlinux-prueba\n"
+            else:
+                salida = (
+                    "HERMES_SO=windows_server\nMicrosoft Windows Server 2022 Standard\n"
+                    "10.0.20348\nWINDOWS-PRUEBA\n"
+                )
+            return ResultadoEjecucionRemota(0, salida, "", 0.01)
+        finally:
+            tipo_transporte.ejecuciones_activas -= 1
 
     async def cerrar(self) -> None:
         return None
@@ -355,6 +375,107 @@ async def test_crud_persistente_permisos_y_auditoria(
             assert servicio.status_code == 200, servicio.text
             assert servicio.json()["datos"]["estado"] == "activo"
             assert servicio.json()["datos"]["nombre_servicio"] == "hermes-prueba.service"
+
+        grupo_multiple = await cliente.post(
+            "/api/v1/grupos",
+            auth=autenticacion_admin,
+            json={
+                "nombre": f"{contexto_integracion.prefijo}-grupo-multiple",
+                "descripcion": "Cuatro servidores para operación concurrente",
+            },
+        )
+        assert grupo_multiple.status_code == 201, grupo_multiple.text
+        id_grupo_multiple = grupo_multiple.json()["id_grupo"]
+        for servidor in servidores:
+            asociacion_multiple = await cliente.put(
+                f"/api/v1/grupos/{id_grupo_multiple}/servidores/{servidor['id_servidor']}",
+                auth=autenticacion_admin,
+            )
+            assert asociacion_multiple.status_code == 200, asociacion_multiple.text
+
+        TransporteRemotoSimulado.max_ejecuciones_activas = 0
+        accion_multiple_denegada = await cliente.post(
+            "/api/v1/acciones-multiples/obtener_identidad",
+            auth=autenticacion_lector,
+            json={"seleccion": {"id_grupo": id_grupo_multiple}},
+        )
+        assert accion_multiple_denegada.status_code == 403
+
+        accion_multiple = await cliente.post(
+            "/api/v1/acciones-multiples/obtener_identidad",
+            auth=autenticacion_admin,
+            json={
+                "seleccion": {
+                    "ids_servidores": [servidor["id_servidor"] for servidor in servidores]
+                }
+            },
+        )
+        assert accion_multiple.status_code == 200, accion_multiple.text
+        resumen_multiple = accion_multiple.json()
+        assert resumen_multiple["estado"] == "completada_con_errores"
+        assert resumen_multiple["total_servidores"] == 4
+        assert resumen_multiple["servidores_completados"] == 3
+        assert resumen_multiple["servidores_fallidos"] == 1
+        assert [resultado["id_servidor"] for resultado in resumen_multiple["resultados"]] == [
+            servidor["id_servidor"] for servidor in servidores
+        ]
+        assert resumen_multiple["resultados"][3]["codigo_error"] == (
+            "servidor_ssh_no_disponible"
+        )
+        assert 2 <= TransporteRemotoSimulado.max_ejecuciones_activas <= (
+            contexto_integracion.aplicacion.state.configuracion.max_concurrencia_acciones_multiples
+        )
+
+        identificador_accion_multiple = accion_multiple.headers["X-Identificador-Solicitud"]
+        async with contexto_integracion.fabrica_sesiones() as sesion:
+            auditoria_multiple = list(
+                (
+                    await sesion.scalars(
+                        select(RegistroAuditoria).where(
+                            RegistroAuditoria.identificador_solicitud
+                            == identificador_accion_multiple
+                        )
+                    )
+                ).all()
+            )
+        assert {registro.id_recurso for registro in auditoria_multiple} == {
+            servidor["id_servidor"] for servidor in servidores
+        }
+
+        configuracion_aplicacion = contexto_integracion.aplicacion.state.configuracion
+        tiempo_limite_anterior = configuracion_aplicacion.tiempo_limite_accion_multiple_segundos
+        configuracion_aplicacion.tiempo_limite_accion_multiple_segundos = 0.2
+        try:
+            accion_grupo = await cliente.post(
+                "/api/v1/acciones-multiples/obtener_diagnostico",
+                auth=autenticacion_admin,
+                json={"seleccion": {"id_grupo": id_grupo_multiple}},
+            )
+        finally:
+            configuracion_aplicacion.tiempo_limite_accion_multiple_segundos = (
+                tiempo_limite_anterior
+            )
+        assert accion_grupo.status_code == 200, accion_grupo.text
+        resultados_grupo = accion_grupo.json()["resultados"]
+        resultado_lento = next(
+            resultado
+            for resultado in resultados_grupo
+            if resultado["id_servidor"] == servidores[2]["id_servidor"]
+        )
+        assert resultado_lento["codigo_error"] == "tiempo_limite_accion_multiple"
+        assert sum(resultado["estado"] == "completada" for resultado in resultados_grupo) == 2
+
+        seleccion_ambigua = await cliente.post(
+            "/api/v1/acciones-multiples/obtener_identidad",
+            auth=autenticacion_admin,
+            json={
+                "seleccion": {
+                    "ids_servidores": [servidores[0]["id_servidor"]],
+                    "todos": True,
+                }
+            },
+        )
+        assert seleccion_ambigua.status_code == 422
 
         servicio_sin_confirmar = await cliente.post(
             f"/api/v1/servidores/{id_primer_servidor}/acciones/detener_servicio",
