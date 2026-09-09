@@ -93,6 +93,11 @@ curl --user administrador_local \
 La respuesta contiene servidor, sistema operativo, acción, estado, datos
 normalizados y duración. No expone la orden remota ni la salida de error.
 
+La misma acción puede dirigirse a IDs, un grupo o todos los servidores activos
+mediante `POST /api/v1/acciones-multiples/{codigo_accion}`. La forma de los
+selectores, los límites y la respuesta consolidada se documentan en
+`operaciones_multiples.md`.
+
 La consulta de un servicio usa el nombre interno, no el nombre visible:
 
 ```bash

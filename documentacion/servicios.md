@@ -141,7 +141,8 @@ la conexión SSH.
 
 Los últimos tres comandos presentan botones de confirmación y cancelación. El
 desafío caduca, solo puede consumirse una vez y queda ligado al usuario,
-servidor, acción y nombre previamente validados.
+selección, acción y nombre previamente validados. Para grupos o todos los
+servidores, Hermes fija los IDs antes de mostrar la confirmación.
 
 ## Alcance de las pruebas
 

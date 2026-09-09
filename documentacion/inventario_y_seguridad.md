@@ -1,7 +1,7 @@
 # Inventario y seguridad
 
 Este documento describe el inventario y el modelo de acceso incorporados desde
-el hito 2 y ampliados hasta el hito 7. Todas las rutas HTTP funcionales usan el
+el hito 2 y ampliados hasta el hito 8. Todas las rutas HTTP funcionales usan el
 prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
 correspondiente en MariaDB.
 

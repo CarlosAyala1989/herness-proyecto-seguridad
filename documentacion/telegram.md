@@ -1,10 +1,11 @@
 # Integración con Telegram
 
 Telegram es una interfaz del backend común de Hermes; ofrece diagnóstico desde
-el hito 6 y gestión confirmada de servicios desde el hito 7. El
-bot no construye órdenes del sistema, no se conecta por SSH directamente y no
-mantiene una lista de usuarios dentro del código. Cada interacción consulta
-MariaDB y delega en los servicios de inventario, permisos, acciones y auditoría.
+el hito 6, gestión confirmada de servicios desde el hito 7 y selección múltiple
+desde el hito 8. El bot no construye órdenes del sistema, no se conecta por SSH
+directamente y no mantiene una lista de usuarios dentro del código. Cada
+interacción consulta MariaDB y delega en los servicios de inventario, permisos,
+acciones y auditoría.
 
 ## Modelo de autorización
 
@@ -21,7 +22,7 @@ Para aceptar una operación deben cumplirse todas estas condiciones:
    `identidades_mensajeria`.
 3. El usuario de Hermes vinculado está activo.
 4. Al menos uno de sus roles concede el permiso necesario.
-5. El servidor seleccionado existe y está activo.
+5. La selección de servidores existe y respeta el máximo configurado.
 6. Los parámetros cumplen el esquema cerrado de la acción.
 
 Una identidad desconocida recibe una denegación y su propio identificador para
@@ -51,7 +52,7 @@ representación no lo exponga accidentalmente.
 
 ## Preparar el usuario autorizado
 
-Aplica primero las migraciones hasta `0005` y crea un administrador si aún no existe:
+Aplica primero todas las migraciones y crea un administrador si aún no existe:
 
 ```bash
 source .venv/bin/activate
@@ -137,14 +138,17 @@ preparar el inventario y administrar usuarios.
 | `/inicio` | Comprueba el acceso y muestra la ayuda. |
 | `/ayuda` | Muestra las operaciones disponibles. |
 | `/servidores` | Lista los servidores activos con botones de selección. |
+| `/grupos` | Lista los grupos con botones de selección. |
 | `/seleccionar <id>` | Selecciona un servidor mediante un entero validado. |
-| `/seleccion` | Vuelve a validar y muestra el servidor actual. |
+| `/seleccionar_grupo <id>` | Selecciona dinámicamente los miembros de un grupo. |
+| `/seleccionar_todos` | Selecciona todos los servidores activos autorizados. |
+| `/seleccion` | Vuelve a validar y muestra la selección actual. |
 | `/diagnostico` | Muestra disponibilidad, CPU, RAM, disco, actividad, sistema y versión. |
 | `/servicio <nombre>` | Consulta el estado exacto de un servicio. |
 | `/iniciar_servicio <nombre>` | Solicita confirmación antes de iniciar un servicio. |
 | `/detener_servicio <nombre>` | Solicita confirmación antes de detener un servicio. |
 | `/reiniciar_servicio <nombre>` | Solicita confirmación antes de reiniciar un servicio. |
-| `/identidad` | Ejecuta `obtener_identidad` sobre el servidor actual. |
+| `/identidad` | Ejecuta `obtener_identidad` sobre la selección actual. |
 | `/proceso <id>` | Ejecuta `consultar_proceso` con un identificador acotado. |
 | `/reiniciar` | Solicita una confirmación efímera antes del reinicio. |
 | `/cancelar` | Invalida la confirmación pendiente. |
@@ -167,6 +171,18 @@ Con el bot, MariaDB, OpenSSH y el agente activos:
 8. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
    `telegram`.
 
+Para una prueba múltiple de solo lectura, registra varios destinos de
+laboratorio, asócialos a un grupo y ejecuta:
+
+```text
+/grupos
+/seleccionar_grupo 1
+/diagnostico
+```
+
+El resumen debe contener una línea independiente por servidor. Un destino
+apagado debe aparecer como fallido sin impedir las respuestas de los demás.
+
 No uses `/reiniciar` ni los comandos que modifican servicios para una
 demostración ordinaria. Sus botones autorizan cambios reales. Las pruebas
 automatizadas de mutación sustituyen el transporte y nunca alteran el
@@ -177,12 +193,19 @@ anfitrión.
 - El bot usa sondeo saliente; no necesita webhook, dominio ni puertos públicos.
 - Las actualizaciones pendientes se descartan al iniciar para evitar acciones
   antiguas.
-- La ejecución es secuencial y conserva el estado conversacional por usuario.
+- Las actualizaciones de Telegram se procesan secuencialmente para conservar el
+  estado conversacional; el orquestador del backend ejecuta internamente los
+  destinos de una selección con concurrencia acotada.
 - Se admiten 30 solicitudes por identidad y minuto.
 - El limitador conserva como máximo 5 000 identidades recientes.
 - Los identificadores de servidor y proceso están acotados antes de convertirlos.
 - Cada confirmación sensible tiene un código aleatorio, queda ligada a su
-  acción y servidor, caduca y se consume una sola vez.
+  acción y selección fija de IDs, caduca y se consume una sola vez.
+- Los grupos se resuelven de nuevo para las lecturas. Antes de confirmar una
+  mutación, sus miembros se fijan para impedir que el alcance se amplíe mientras
+  el usuario decide.
+- Las respuestas múltiples se dividen respetando el límite de mensaje y no
+  omiten silenciosamente resultados.
 - Los registros solo incluyen el tipo de un error inesperado de Telegram; no
   incluyen el mensaje, la actualización ni el token.
 

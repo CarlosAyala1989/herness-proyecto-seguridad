@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 a 5 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 8 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -59,6 +59,15 @@ Abre `.env` con tu editor y sustituye, como mínimo:
 ```dotenv
 HERMES_CONTRASENA_BASE_DATOS=una_contrasena_local_distinta
 HERMES_CONTRASENA_RAIZ_BASE_DATOS=otra_contrasena_local_distinta
+```
+
+Las operaciones múltiples disponen de límites locales conservadores. Para el
+laboratorio pueden mantenerse los valores de `.env.ejemplo`:
+
+```dotenv
+HERMES_MAX_CONCURRENCIA_ACCIONES_MULTIPLES=4
+HERMES_MAX_SERVIDORES_ACCION_MULTIPLE=100
+HERMES_TIEMPO_LIMITE_ACCION_MULTIPLE_SEGUNDOS=45
 ```
 
 No confirmes `.env` en Git. Puedes verificarlo con:
@@ -175,7 +184,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -214,6 +223,11 @@ curl --user administrador_local \
   --header 'Content-Type: application/json' \
   --data '{"parametros":{"nombre_servicio":"ssh.service"}}' \
   http://127.0.0.1:8000/api/v1/servidores/1/acciones/consultar_servicio
+
+curl --user administrador_local \
+  --header 'Content-Type: application/json' \
+  --data '{"seleccion":{"ids_servidores":[1,2,3,4]}}' \
+  http://127.0.0.1:8000/api/v1/acciones-multiples/obtener_diagnostico
 ```
 
 No inicies el backend con `--host 0.0.0.0`: HTTP Basic debe quedar limitado a
@@ -292,12 +306,12 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 7 incorpora consulta, inicio, detención y reinicio de servicios Linux y
-Windows Server mediante el catálogo, la API y Telegram comunes.
+El hito 8 incorpora selección individual, por grupo o de todos los servidores
+activos, ejecución concurrente acotada, plazos individuales, consolidación y
+auditoría por destino mediante la API y Telegram comunes.
 
 Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
-un usuario vinculado y un servidor activo. El reinicio requiere permiso y una
+un usuario vinculado y servidores activos. El reinicio requiere permiso y una
 confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
 planificado expresamente. Las mutaciones de servicios también exigen permiso,
-confirmación y privilegios remotos limitados. Todavía no existen operaciones
-simultáneas ni Slack.
+confirmación y privilegios remotos limitados. Slack corresponde al hito 9.

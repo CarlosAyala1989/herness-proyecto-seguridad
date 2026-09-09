@@ -5,6 +5,7 @@
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
 persistencia y contratos externos. Telegram, diagnóstico y servicios usan
 esos mismos servicios sin duplicar inventario, autorización, SSH ni auditoría.
+El orquestador múltiple añade concurrencia acotada sin cambiar esos límites.
 
 ## Componentes actuales
 
@@ -48,6 +49,9 @@ Telegram ──► interfaz/telegram ──► gestor_telegram
   parámetros, permisos y requisito de confirmación.
 - `servicios/gestor_acciones.py` aplica la política en orden: catálogo,
   autorización, inventario, parámetros, confirmación, adaptador, SSH y auditoría.
+- `servicios/gestor_acciones_multiples.py` resuelve IDs, grupos o todos los
+  servidores activos; crea una tarea y una sesión de base de datos por destino,
+  limita la concurrencia y consolida resultados sin propagar fallos.
 - `modelos/identidad_mensajeria.py` vincula un identificador externo inmutable
   con un usuario Hermes sin almacenar tokens ni números telefónicos.
 - `servicios/gestor_telegram.py` es la fachada del backend para el canal: abre
@@ -138,8 +142,15 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
 - Las confirmaciones Telegram usan un valor aleatorio, caducan, pertenecen al
   estado de un único usuario y solo pueden consumirse una vez.
 - Inicio, detención y reinicio de servicios comparten la confirmación genérica;
-  el desafío queda ligado en memoria a la acción, parámetros y servidor que ya
-  fueron autorizados, y todo vuelve a validarse al consumirlo.
+  el desafío queda ligado en memoria a la acción, parámetros y selección que ya
+  fueron autorizados. Una selección dinámica se fija en IDs antes de confirmar
+  y todo vuelve a validarse al consumirla.
+- Las acciones múltiples prohíben selectores ambiguos y IDs duplicados. El
+  inventario no tiene un máximo fijo, pero cada solicitud está acotada para
+  proteger conexiones, memoria y tamaño de respuesta.
+- Cada destino concurrente abre su propia sesión de SQLAlchemy. Un semáforo y
+  un plazo total individual aíslan servidores lentos o desconectados, y cada
+  resultado conserva auditoría por servidor.
 - `consultar_servicios` está separado de `gestionar_servicios`. El operador de
   inventario solo recibe lectura y el administrador recibe las mutaciones.
 - La interfaz limita a 30 solicitudes por identidad y minuto y acota a 5 000 las

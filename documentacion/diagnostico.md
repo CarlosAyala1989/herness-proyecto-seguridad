@@ -87,8 +87,8 @@ Tiempo de actividad: 1 d, 1 h, 1 min
 - Cada ejecución deja un registro por usuario, servidor y canal.
 
 La gestión de servicios ya está incorporada y se documenta en `servicios.md`.
-La ejecución simultánea sobre grupos y las alertas automáticas pertenecen a los
-hitos 8 y 10.
+La ejecución simultánea sobre IDs, grupos o todos los servidores activos está
+disponible desde el hito 8. Las alertas automáticas pertenecen al hito 10.
 
 ## Referencias técnicas
 

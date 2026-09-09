@@ -3,11 +3,12 @@
 Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
 hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
-de acciones administrativas controladas, diagnóstico y una interfaz Telegram.
+de acciones administrativas controladas, diagnóstico, administración de
+servicios y operaciones múltiples desde Telegram.
 
 ## Estado actual
 
-Hitos 1 a 7 completados. Hermes 0.7.0 proporciona:
+Hitos 1 a 8 completados. Hermes 0.8.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -39,13 +40,17 @@ Hitos 1 a 7 completados. Hermes 0.7.0 proporciona:
   disponibles representadas explícitamente, sin detener las demás lecturas;
 - consulta, inicio, detención y reinicio normalizados de servicios;
 - `systemctl` en Linux y cmdlets de PowerShell en Windows Server;
-- permisos separados y confirmación de un solo uso para cada cambio de estado.
+- permisos separados y confirmación de un solo uso para cada cambio de estado;
+- selección individual, por grupo o de todos los servidores activos;
+- operaciones concurrentes con máximo y plazo individual configurables;
+- aislamiento de fallos, resultados consolidados y auditoría por servidor;
+- selección múltiple y respuestas divididas de forma segura en Telegram.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 `obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
 `detener_servicio`, `reiniciar_servicio` y `reiniciar_servidor`. Telegram ya
-reutiliza esas acciones. Las operaciones simultáneas corresponden al hito 8 y
-Slack se incorporará en el hito 9.
+reutiliza esas acciones sobre un servidor, un grupo o todos los servidores
+activos. Slack se incorporará en el hito 9.
 
 ## Requisitos locales
 
@@ -135,3 +140,5 @@ La obtención y normalización de métricas se detalla en
 [`documentacion/diagnostico.md`](documentacion/diagnostico.md).
 La preparación de cuentas y administración de servicios se explica en
 [`documentacion/servicios.md`](documentacion/servicios.md).
+La selección, concurrencia y consolidación se detallan en
+[`documentacion/operaciones_multiples.md`](documentacion/operaciones_multiples.md).
