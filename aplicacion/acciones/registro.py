@@ -14,6 +14,7 @@ class CodigoAccion(StrEnum):
     OBTENER_IDENTIDAD = "obtener_identidad"
     CONSULTAR_PROCESO = "consultar_proceso"
     REINICIAR_SERVIDOR = "reiniciar_servidor"
+    OBTENER_DIAGNOSTICO = "obtener_diagnostico"
 
 
 class ParametrosAccion(BaseModel):
@@ -71,6 +72,13 @@ _ACCIONES = {
         descripcion="Programar el reinicio del servidor con un minuto de margen.",
         codigo_permiso="reiniciar_servidor",
         requiere_confirmacion=True,
+        modelo_parametros=ParametrosSinCampos,
+    ),
+    CodigoAccion.OBTENER_DIAGNOSTICO: DefinicionAccion(
+        codigo=CodigoAccion.OBTENER_DIAGNOSTICO,
+        descripcion="Consultar disponibilidad, recursos y datos del sistema.",
+        codigo_permiso="consultar_diagnostico",
+        requiere_confirmacion=False,
         modelo_parametros=ParametrosSinCampos,
     ),
 }

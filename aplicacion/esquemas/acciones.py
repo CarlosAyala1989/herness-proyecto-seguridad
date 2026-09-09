@@ -25,7 +25,7 @@ class ResultadoAccionRespuesta(BaseModel):
     sistema_operativo: SistemaOperativo
     accion: CodigoAccion
     estado: Literal["completada"] = "completada"
-    datos: dict[str, str | int | bool]
+    datos: dict[str, str | int | float | bool | None]
     duracion_ms: float
 
 
