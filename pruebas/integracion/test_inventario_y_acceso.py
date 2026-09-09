@@ -285,6 +285,7 @@ async def test_crud_persistente_permisos_y_auditoria(
             "gestionar_inventario",
             "gestionar_acceso",
             "consultar_auditoria",
+            "comprobar_conexion",
         }
 
         rol_auditor = next(item for item in roles.json() if item["nombre"] == "auditor")

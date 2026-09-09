@@ -71,3 +71,15 @@ def test_servidor_rechaza_entradas_no_controladas(campo: str, valor: str) -> Non
 
     with pytest.raises(ValidationError):
         CrearServidor(**datos)
+
+
+def test_servidor_rechaza_huella_de_host_sin_formato_sha256() -> None:
+    with pytest.raises(ValidationError):
+        CrearServidor(
+            nombre="servidor-prueba-01",
+            direccion="192.0.2.10",
+            usuario_conexion="operador",
+            sistema_operativo=SistemaOperativo.LINUX,
+            referencia_credencial="archivo:claves/servidor-prueba-01",
+            huella_clave_host="huella-sin-formato",
+        )

@@ -12,6 +12,7 @@ patron_nombre = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{1,99}$")
 patron_direccion = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,254}$")
 patron_usuario_conexion = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._@\\-]{0,99}$")
 patron_referencia = re.compile(r"^[a-z][a-z0-9_]{1,30}:[a-zA-Z0-9._/-]{1,220}$")
+patron_huella_host = re.compile(r"^SHA256:[a-zA-Z0-9+/]{20,64}={0,2}$")
 
 
 def _validar_patron(valor: str, patron: re.Pattern[str], mensaje: str) -> str:
@@ -71,6 +72,17 @@ class DatosServidorBase(BaseModel):
             "La referencia debe usar el formato proveedor:identificador.",
         )
 
+    @field_validator("huella_clave_host")
+    @classmethod
+    def validar_huella_host(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return _validar_patron(
+            valor,
+            patron_huella_host,
+            "La huella del host debe tener formato SHA256 de OpenSSH.",
+        )
+
 
 class CrearServidor(DatosServidorBase):
     """Solicitud para registrar un servidor."""
@@ -117,6 +129,17 @@ class ActualizarServidor(BaseModel):
         if valor is None:
             return None
         return _validar_patron(valor, patron_referencia, "La referencia no es válida.")
+
+    @field_validator("huella_clave_host")
+    @classmethod
+    def validar_huella_host(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return _validar_patron(
+            valor,
+            patron_huella_host,
+            "La huella del host debe tener formato SHA256 de OpenSSH.",
+        )
 
 
 class ServidorResumen(EsquemaDesdeAtributos):
