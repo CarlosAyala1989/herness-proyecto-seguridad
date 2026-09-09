@@ -38,7 +38,17 @@ class TransporteRemotoSimulado:
         assert comando
         assert tiempo_limite_segundos > 0
         assert limite_salida_bytes > 0
-        if self.servidor.sistema_operativo.value == "linux":
+        if "HERMES_ACCION=obtener_identidad" in comando:
+            salida = f"HERMES_ACCION=obtener_identidad\noperador_pruebas\n{self.servidor.nombre}\n"
+        elif "HERMES_ACCION=consultar_proceso" in comando:
+            salida = (
+                "HERMES_ACCION=consultar_proceso\n123 python\n"
+                if self.servidor.sistema_operativo.value == "linux"
+                else "HERMES_ACCION=consultar_proceso\n123\npython\n"
+            )
+        elif "HERMES_ACCION=reiniciar_servidor" in comando:
+            salida = "HERMES_ACCION=reiniciar_servidor\nPROGRAMADO\n"
+        elif self.servidor.sistema_operativo.value == "linux":
             salida = "HERMES_SO=linux\nLinux\n6.8.0-prueba\nlinux-prueba\n"
         else:
             salida = (
@@ -237,6 +247,66 @@ async def test_crud_persistente_permisos_y_auditoria(
             assert conexion.json()["estado"] == "disponible"
             assert conexion.json()["sistema_detectado"] == servidor["sistema_operativo"]
 
+        acciones_admin = await cliente.get("/api/v1/acciones", auth=autenticacion_admin)
+        acciones_lector = await cliente.get("/api/v1/acciones", auth=autenticacion_lector)
+        assert acciones_admin.status_code == 200
+        assert {item["codigo"] for item in acciones_admin.json()} == {
+            "obtener_identidad",
+            "consultar_proceso",
+            "reiniciar_servidor",
+        }
+        assert acciones_lector.status_code == 200
+        assert acciones_lector.json() == []
+
+        accion_denegada = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/obtener_identidad",
+            auth=autenticacion_lector,
+            json={},
+        )
+        assert accion_denegada.status_code == 403
+
+        for servidor in servidores[:2]:
+            identidad = await cliente.post(
+                f"/api/v1/servidores/{servidor['id_servidor']}/acciones/obtener_identidad",
+                auth=autenticacion_admin,
+                json={},
+            )
+            assert identidad.status_code == 200, identidad.text
+            assert identidad.json()["estado"] == "completada"
+            assert identidad.json()["datos"]["usuario"] == "operador_pruebas"
+
+        parametros_maliciosos = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/consultar_proceso",
+            auth=autenticacion_admin,
+            json={"parametros": {"id_proceso": "123; id"}},
+        )
+        assert parametros_maliciosos.status_code == 422
+        assert parametros_maliciosos.json()["codigo"] == "parametros_accion_no_validos"
+
+        proceso = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/consultar_proceso",
+            auth=autenticacion_admin,
+            json={"parametros": {"id_proceso": 123}},
+        )
+        assert proceso.status_code == 200
+        assert proceso.json()["datos"] == {"id_proceso": 123, "nombre_proceso": "python"}
+
+        reinicio_sin_confirmar = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/reiniciar_servidor",
+            auth=autenticacion_admin,
+            json={},
+        )
+        assert reinicio_sin_confirmar.status_code == 400
+        assert reinicio_sin_confirmar.json()["codigo"] == "confirmacion_requerida"
+
+        reinicio_confirmado_simulado = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/reiniciar_servidor",
+            auth=autenticacion_admin,
+            json={"confirmar": True},
+        )
+        assert reinicio_confirmado_simulado.status_code == 200
+        assert reinicio_confirmado_simulado.json()["datos"]["reinicio_programado"] is True
+
         actualizacion = await cliente.patch(
             f"/api/v1/servidores/{id_primer_servidor}",
             auth=autenticacion_admin,
@@ -309,6 +379,8 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert "crear_servidor" in acciones
         assert "comprobar_permiso" in acciones
         assert "comprobar_conexion_ssh" in acciones
+        assert "ejecutar_accion_obtener_identidad" in acciones
+        assert "ejecutar_accion_reiniciar_servidor" in acciones
 
         sin_confirmacion = await cliente.delete(
             f"/api/v1/servidores/{servidores[1]['id_servidor']}",
