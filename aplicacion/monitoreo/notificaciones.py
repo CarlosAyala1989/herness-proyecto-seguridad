@@ -154,15 +154,28 @@ async def preparar_notificaciones(
     for transicion in transiciones:
         ids_aperturas_enviadas: set[int] | None = None
         if transicion.fase is FaseNotificacionAlerta.RECUPERACION:
-            ids_aperturas_enviadas = set(
-                await sesion.scalars(
-                    select(NotificacionAlerta.id_identidad_mensajeria).where(
-                        NotificacionAlerta.id_alerta == transicion.alerta.id_alerta,
-                        NotificacionAlerta.fase == FaseNotificacionAlerta.APERTURA,
-                        NotificacionAlerta.estado == EstadoNotificacionAlerta.ENVIADA,
+            aperturas = list(
+                (
+                    await sesion.scalars(
+                        select(NotificacionAlerta).where(
+                            NotificacionAlerta.id_alerta == transicion.alerta.id_alerta,
+                            NotificacionAlerta.fase == FaseNotificacionAlerta.APERTURA,
+                        )
                     )
-                )
+                ).all()
             )
+            ids_aperturas_enviadas = {
+                apertura.id_identidad_mensajeria
+                for apertura in aperturas
+                if apertura.estado is EstadoNotificacionAlerta.ENVIADA
+                and apertura.id_identidad_mensajeria is not None
+            }
+            for apertura in aperturas:
+                if apertura.estado is not EstadoNotificacionAlerta.ENVIADA:
+                    apertura.estado = EstadoNotificacionAlerta.OMITIDA
+                    apertura.ultimo_error = (
+                        "La condición se recuperó antes de completar esta entrega."
+                    )
         for identidad in destinos:
             if (
                 ids_aperturas_enviadas is not None

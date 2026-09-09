@@ -160,6 +160,8 @@ La recuperación se envía únicamente a identidades que recibieron la apertura.
 Cada entrega se registra en `notificaciones_alertas`; los fallos se reintentan
 en ciclos posteriores hasta el máximo configurado. Los errores almacenados son
 genéricos y nunca incluyen respuestas del proveedor ni secretos.
+Si una condición se recupera antes de entregar su apertura, esa entrega pasa a
+`omitida`; no se envía tarde una alerta que ya dejó de estar activa.
 
 ## Consultar alertas
 

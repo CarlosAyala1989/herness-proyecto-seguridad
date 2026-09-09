@@ -213,7 +213,13 @@ def upgrade() -> None:
         ),
         sa.Column(
             "estado",
-            sa.Enum("pendiente", "enviada", "fallida", name="estado_notificacion_alerta"),
+            sa.Enum(
+                "pendiente",
+                "enviada",
+                "fallida",
+                "omitida",
+                name="estado_notificacion_alerta",
+            ),
             nullable=False,
         ),
         sa.Column("intentos", sa.Integer(), server_default="0", nullable=False),

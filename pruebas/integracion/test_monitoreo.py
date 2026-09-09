@@ -118,6 +118,7 @@ class ContextoMonitoreo:
     contrasena_auditor: str
     id_usuario_admin: int
     id_identidad: int
+    id_identidad_slack: int
     id_servidor: int
     id_servidor_no_disponible: int
     primer_registro_auditoria: int
@@ -187,7 +188,23 @@ async def contexto_monitoreo() -> AsyncIterator[ContextoMonitoreo]:
             nombre_externo="destino_monitoreo",
             activo=True,
         )
-        sesion.add_all([administrador, auditor, servidor, servidor_no_disponible, identidad])
+        identidad_slack = IdentidadMensajeria(
+            usuario=administrador,
+            canal=TipoCanalMensajeria.SLACK,
+            identificador_externo="T012MONITOR:U012MONITOR",
+            nombre_externo="destino_monitoreo_slack",
+            activo=True,
+        )
+        sesion.add_all(
+            [
+                administrador,
+                auditor,
+                servidor,
+                servidor_no_disponible,
+                identidad,
+                identidad_slack,
+            ]
+        )
         await sesion.commit()
         contexto = ContextoMonitoreo(
             motor=motor,
@@ -201,6 +218,7 @@ async def contexto_monitoreo() -> AsyncIterator[ContextoMonitoreo]:
             contrasena_auditor=contrasena_auditor,
             id_usuario_admin=administrador.id_usuario,
             id_identidad=identidad.id_identidad_mensajeria,
+            id_identidad_slack=identidad_slack.id_identidad_mensajeria,
             id_servidor=servidor.id_servidor,
             id_servidor_no_disponible=servidor_no_disponible.id_servidor,
             primer_registro_auditoria=primer_registro,
@@ -359,7 +377,11 @@ async def _preparar_motor(contexto: ContextoMonitoreo) -> None:
             id_identidad_mensajeria=contexto.id_identidad,
             activo=True,
         )
-        sesion.add_all([principal, no_disponible, suscripcion])
+        suscripcion_slack = SuscripcionAlerta(
+            id_identidad_mensajeria=contexto.id_identidad_slack,
+            activo=True,
+        )
+        sesion.add_all([principal, no_disponible, suscripcion, suscripcion_slack])
         await sesion.commit()
 
 
@@ -440,9 +462,27 @@ async def test_ciclo_deduplica_reintenta_recupera_y_aisla_servidores(
     assert len(alertas) == 3
     assert sum(alerta.estado is EstadoAlerta.RECUPERADA for alerta in alertas) == 2
     assert sum(alerta.estado is EstadoAlerta.ACTIVA for alerta in alertas) == 1
-    assert len(notificaciones) == 5
-    assert all(
-        notificacion.estado is EstadoNotificacionAlerta.ENVIADA for notificacion in notificaciones
+    assert len(notificaciones) == 8
+    assert (
+        sum(
+            notificacion.estado is EstadoNotificacionAlerta.ENVIADA
+            for notificacion in notificaciones
+        )
+        == 5
+    )
+    assert (
+        sum(
+            notificacion.estado is EstadoNotificacionAlerta.OMITIDA
+            for notificacion in notificaciones
+        )
+        == 2
+    )
+    assert (
+        sum(
+            notificacion.estado is EstadoNotificacionAlerta.PENDIENTE
+            for notificacion in notificaciones
+        )
+        == 1
     )
     assert len(notificador.mensajes) == 5
     assert "detectar_alerta_cpu_alta" in acciones_auditoria

@@ -83,3 +83,4 @@ class EstadoNotificacionAlerta(StrEnum):
     PENDIENTE = "pendiente"
     ENVIADA = "enviada"
     FALLIDA = "fallida"
+    OMITIDA = "omitida"
