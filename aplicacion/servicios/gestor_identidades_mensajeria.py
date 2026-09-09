@@ -12,6 +12,7 @@ from aplicacion.errores import (
 )
 from aplicacion.modelos.acceso import Rol, Usuario
 from aplicacion.modelos.enumeraciones import (
+    CanalAuditoria,
     ResultadoAuditoria,
     TipoCanalMensajeria,
     TipoRecursoAuditoria,
@@ -104,6 +105,17 @@ async def vincular_identidad_telegram(
         identidad.nombre_externo = nombre_telegram
         identidad.activo = True
 
+    preparar_registro_auditoria(
+        sesion,
+        usuario=None,
+        accion="vincular_identidad_telegram",
+        tipo_recurso=TipoRecursoAuditoria.USUARIO,
+        id_recurso=usuario.id_usuario,
+        resultado=ResultadoAuditoria.EXITO,
+        detalle="Identidad de Telegram vinculada mediante administración local.",
+        canal=CanalAuditoria.SISTEMA,
+    )
+
     try:
         await sesion.commit()
     except IntegrityError:
@@ -111,3 +123,34 @@ async def vincular_identidad_telegram(
         raise ErrorConflictoDatos("No fue posible vincular la identidad de Telegram.") from None
     await sesion.refresh(identidad)
     return identidad
+
+
+async def desactivar_identidad_telegram(
+    sesion: AsyncSession,
+    nombre_usuario: str,
+) -> None:
+    """Revoca el acceso de Telegram sin desactivar el usuario local."""
+
+    consulta = (
+        select(IdentidadMensajeria)
+        .join(IdentidadMensajeria.usuario)
+        .where(
+            Usuario.nombre_usuario == nombre_usuario.strip().lower(),
+            IdentidadMensajeria.canal == TipoCanalMensajeria.TELEGRAM,
+        )
+    )
+    identidad = await sesion.scalar(consulta)
+    if identidad is None:
+        raise ErrorRecursoNoEncontrado("identidad de Telegram")
+    identidad.activo = False
+    preparar_registro_auditoria(
+        sesion,
+        usuario=None,
+        accion="desactivar_identidad_telegram",
+        tipo_recurso=TipoRecursoAuditoria.USUARIO,
+        id_recurso=identidad.id_usuario,
+        resultado=ResultadoAuditoria.EXITO,
+        detalle="Identidad de Telegram desactivada mediante administración local.",
+        canal=CanalAuditoria.SISTEMA,
+    )
+    await sesion.commit()

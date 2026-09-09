@@ -191,6 +191,10 @@ async def test_rechaza_identificador_de_proceso_con_texto(
     assert mensaje.respuestas[-1][0] == "Uso correcto: /proceso <id>."
     gestor.ejecutar_accion.assert_not_awaited()
 
+    await interfaz.consultar_proceso(_actualizacion(mensaje), _contexto("9" * 5_000))
+    assert mensaje.respuestas[-1][0] == "Uso correcto: /proceso <id>."
+    gestor.ejecutar_accion.assert_not_awaited()
+
 
 @pytest.mark.asyncio
 async def test_reinicio_exige_boton_de_confirmacion_de_un_solo_uso(
@@ -261,3 +265,19 @@ def test_construye_cliente_sin_abrir_la_red(configuracion_telegram: Configuracio
 
     assert aplicacion.bot.token.endswith("12345")
     assert len(aplicacion.handlers[0]) >= 10
+
+
+@pytest.mark.asyncio
+async def test_limita_solicitudes_antes_de_consultar_base_datos(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    mensaje = MensajeSimulado()
+    actualizacion = _actualizacion(mensaje)
+
+    for _ in range(31):
+        await interfaz.mostrar_ayuda(actualizacion, _contexto())
+
+    assert "límite temporal" in mensaje.respuestas[-1][0]
+    assert gestor.comprobar_acceso.await_count == 30

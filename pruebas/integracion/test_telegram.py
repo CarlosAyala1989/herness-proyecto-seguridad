@@ -27,7 +27,10 @@ from aplicacion.modelos.identidad_mensajeria import IdentidadMensajeria
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.seguridad.contrasenas import generar_hash_contrasena
-from aplicacion.servicios.gestor_identidades_mensajeria import vincular_identidad_telegram
+from aplicacion.servicios.gestor_identidades_mensajeria import (
+    desactivar_identidad_telegram,
+    vincular_identidad_telegram,
+)
 from aplicacion.servicios.gestor_telegram import GestorTelegram
 
 
@@ -256,3 +259,30 @@ async def test_permiso_se_comprueba_tambien_antes_de_confirmar(
             contexto_telegram_integracion.id_servidor_activo,
             "reiniciar_servidor",
         )
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_revoca_solo_el_acceso_de_telegram(
+    contexto_telegram_integracion: ContextoTelegramIntegracion,
+) -> None:
+    async with contexto_telegram_integracion.fabrica_sesiones() as sesion:
+        await desactivar_identidad_telegram(
+            sesion,
+            f"{contexto_telegram_integracion.prefijo}-usuario",
+        )
+
+    with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
+        await contexto_telegram_integracion.gestor.comprobar_acceso(
+            contexto_telegram_integracion.identificador_autorizado,
+            1006,
+        )
+
+    async with contexto_telegram_integracion.fabrica_sesiones() as sesion:
+        usuario = await sesion.scalar(
+            select(Usuario).where(
+                Usuario.nombre_usuario == f"{contexto_telegram_integracion.prefijo}-usuario"
+            )
+        )
+        assert usuario is not None
+        assert usuario.activo is True

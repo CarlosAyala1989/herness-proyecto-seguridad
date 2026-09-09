@@ -2,6 +2,7 @@
 
 import logging
 import secrets
+from collections import deque
 from dataclasses import dataclass
 from hmac import compare_digest
 from time import monotonic
@@ -30,6 +31,10 @@ registrador = logging.getLogger(__name__)
 CLAVE_SERVIDOR_SELECCIONADO = "id_servidor_seleccionado"
 CLAVE_CONFIRMACION_REINICIO = "confirmacion_reinicio"
 LIMITE_MENSAJE_TELEGRAM = 4_000
+MAX_SOLICITUDES_TELEGRAM_POR_MINUTO = 30
+MAX_IDENTIDADES_EN_LIMITADOR = 5_000
+MAX_ID_SERVIDOR = 9_223_372_036_854_775_807
+MAX_ID_PROCESO = 4_194_304
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +72,7 @@ class InterfazTelegram(CanalMensajeria):
         self._configuracion = configuracion
         self._motor_base_datos = motor_base_datos
         self._aplicacion: Application | None = None
+        self._solicitudes_recientes: dict[int, deque[float]] = {}
 
     def registrar(self, aplicacion: Application) -> None:
         """Registra todos los comandos antes de iniciar el sondeo."""
@@ -82,7 +88,10 @@ class InterfazTelegram(CanalMensajeria):
         aplicacion.add_handler(CommandHandler("reiniciar", self.solicitar_reinicio))
         aplicacion.add_handler(CommandHandler("cancelar", self.cancelar))
         aplicacion.add_handler(
-            CallbackQueryHandler(self.seleccionar_por_boton, pattern=r"^seleccionar:[1-9][0-9]*$")
+            CallbackQueryHandler(
+                self.seleccionar_por_boton,
+                pattern=r"^seleccionar:[1-9][0-9]{0,18}$",
+            )
         )
         aplicacion.add_handler(
             CallbackQueryHandler(
@@ -136,6 +145,12 @@ class InterfazTelegram(CanalMensajeria):
                 "Por seguridad, Hermes solo atiende conversaciones privadas.",
             )
             return None
+        if not self._admitir_solicitud(usuario.id):
+            await self._responder(
+                actualizacion,
+                "Se alcanzó el límite temporal de solicitudes. Inténtalo nuevamente en un minuto.",
+            )
+            return None
         try:
             nombre = await self._gestor.comprobar_acceso(usuario.id, actualizacion.update_id)
         except ErrorIdentidadMensajeriaNoAutorizada:
@@ -146,6 +161,42 @@ class InterfazTelegram(CanalMensajeria):
             )
             return None
         return usuario.id, actualizacion.update_id, nombre
+
+    def _admitir_solicitud(self, identificador_telegram: int) -> bool:
+        """Acota abuso por identidad y evita crecimiento ilimitado en memoria."""
+
+        ahora = monotonic()
+        umbral = ahora - 60
+        if (
+            identificador_telegram not in self._solicitudes_recientes
+            and len(self._solicitudes_recientes) >= MAX_IDENTIDADES_EN_LIMITADOR
+        ):
+            inactivas = [
+                identificador
+                for identificador, solicitudes in self._solicitudes_recientes.items()
+                if not solicitudes or solicitudes[-1] < umbral
+            ]
+            for identificador in inactivas:
+                self._solicitudes_recientes.pop(identificador, None)
+            if len(self._solicitudes_recientes) >= MAX_IDENTIDADES_EN_LIMITADOR:
+                return False
+
+        solicitudes = self._solicitudes_recientes.setdefault(identificador_telegram, deque())
+        while solicitudes and solicitudes[0] < umbral:
+            solicitudes.popleft()
+        if len(solicitudes) >= MAX_SOLICITUDES_TELEGRAM_POR_MINUTO:
+            return False
+        solicitudes.append(ahora)
+        return True
+
+    @staticmethod
+    def _convertir_entero_acotado(texto: str, maximo: int) -> int | None:
+        """Evita conversiones enormes y rechaza signos o caracteres añadidos."""
+
+        if not texto.isascii() or not texto.isdigit() or len(texto) > len(str(maximo)):
+            return None
+        valor = int(texto)
+        return valor if 1 <= valor <= maximo else None
 
     @staticmethod
     def _texto_ayuda() -> str:
@@ -246,10 +297,15 @@ class InterfazTelegram(CanalMensajeria):
         acceso = await self._autorizar(actualizacion)
         if acceso is None:
             return
-        if len(contexto.args) != 1 or not contexto.args[0].isdigit():
+        id_servidor = (
+            self._convertir_entero_acotado(contexto.args[0], MAX_ID_SERVIDOR)
+            if len(contexto.args) == 1
+            else None
+        )
+        if id_servidor is None:
             await self._responder(actualizacion, "Uso correcto: /seleccionar <id>.")
             return
-        await self._seleccionar(actualizacion, contexto, int(contexto.args[0]), acceso)
+        await self._seleccionar(actualizacion, contexto, id_servidor, acceso)
 
     async def seleccionar_por_boton(
         self,
@@ -265,7 +321,13 @@ class InterfazTelegram(CanalMensajeria):
         acceso = await self._autorizar(actualizacion)
         if acceso is None:
             return
-        id_servidor = int(consulta.data.partition(":")[2])
+        id_servidor = self._convertir_entero_acotado(
+            consulta.data.partition(":")[2],
+            MAX_ID_SERVIDOR,
+        )
+        if id_servidor is None:
+            await self._responder(actualizacion, "La selección recibida no es válida.")
+            return
         await self._seleccionar(actualizacion, contexto, id_servidor, acceso)
 
     async def mostrar_seleccion(self, actualizacion: Update, contexto: CallbackContext) -> None:
@@ -363,7 +425,12 @@ class InterfazTelegram(CanalMensajeria):
     async def consultar_proceso(self, actualizacion: Update, contexto: CallbackContext) -> None:
         """Valida sintaxis básica y deja el rango al esquema central de la acción."""
 
-        if len(contexto.args) != 1 or not contexto.args[0].isdigit():
+        id_proceso = (
+            self._convertir_entero_acotado(contexto.args[0], MAX_ID_PROCESO)
+            if len(contexto.args) == 1
+            else None
+        )
+        if id_proceso is None:
             if await self._autorizar(actualizacion) is not None:
                 await self._responder(actualizacion, "Uso correcto: /proceso <id>.")
             return
@@ -371,7 +438,7 @@ class InterfazTelegram(CanalMensajeria):
             actualizacion,
             contexto,
             "consultar_proceso",
-            SolicitudEjecucionAccion(parametros={"id_proceso": int(contexto.args[0])}),
+            SolicitudEjecucionAccion(parametros={"id_proceso": id_proceso}),
         )
 
     async def solicitar_reinicio(
