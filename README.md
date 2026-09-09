@@ -2,12 +2,12 @@
 
 Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
-hitos y actualmente dispone de inventario, seguridad, transporte SSH y un motor
-de acciones administrativas controladas.
+hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
+de acciones administrativas controladas y una interfaz Telegram.
 
 ## Estado actual
 
-Hitos 1 a 4 completados. Hermes 0.4.0 proporciona:
+Hitos 1 a 5 completados. Hermes 0.5.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -28,11 +28,16 @@ Hitos 1 a 4 completados. Hermes 0.4.0 proporciona:
 - catálogo cerrado de acciones remotas, sin ejecución arbitraria;
 - autorización y validación específica por acción;
 - confirmación obligatoria para reinicios;
-- resultados normalizados y auditoría por servidor.
+- resultados normalizados y auditoría por servidor;
+- bot Telegram mediante sondeo saliente, sin publicar puertos adicionales;
+- autorización por identificador numérico de Telegram vinculado en MariaDB;
+- selección de servidor, comandos de lectura y confirmación interactiva;
+- revocación local, límite de frecuencia y restricción a chats privados.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso` y
-`reiniciar_servidor`. Todavía no se incluyen bots, métricas ni administración
-de servicios; corresponden a los hitos 5, 6 y 7.
+`reiniciar_servidor`. Telegram ya reutiliza esas acciones. Todavía no se incluyen
+métricas ni administración de servicios; corresponden a los hitos 6 y 7. Slack
+se incorporará en el hito 9.
 
 ## Requisitos locales
 
@@ -116,3 +121,5 @@ servidores está en
 [`documentacion/conexiones_ssh.md`](documentacion/conexiones_ssh.md).
 El catálogo y sus controles se describen en
 [`documentacion/motor_acciones.md`](documentacion/motor_acciones.md).
+La activación y el uso del bot se explican en
+[`documentacion/telegram.md`](documentacion/telegram.md).

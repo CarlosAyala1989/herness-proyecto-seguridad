@@ -125,6 +125,6 @@ máquina de laboratorio autorizada.
 
 Una operación nueva debe incorporar su código al catálogo, un esquema de
 parámetros estricto, un permiso persistente cuando corresponda y una
-implementación en ambos adaptadores. Telegram y Slack solo convertirán la
-interacción del usuario en estas solicitudes; no contendrán órdenes SSH ni
-reglas de autorización propias.
+implementación en ambos adaptadores. Telegram ya convierte la interacción del
+usuario en estas solicitudes sin contener órdenes SSH ni reglas de autorización
+propias. Slack seguirá el mismo contrato en el hito 9.

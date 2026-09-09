@@ -1,7 +1,7 @@
 # Inventario y seguridad
 
 Este documento describe el inventario y el modelo de acceso incorporados desde
-el hito 2 y ampliados hasta el hito 4. Todas las rutas funcionales usan el
+el hito 2 y ampliados hasta el hito 5. Todas las rutas HTTP funcionales usan el
 prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
 correspondiente en MariaDB.
 
@@ -10,7 +10,8 @@ correspondiente en MariaDB.
 ```text
 usuarios ──< usuarios_roles >── roles ──< roles_permisos >── permisos
    │
-   └──< registros_auditoria
+   ├──< registros_auditoria
+   └──< identidades_mensajeria
 
 servidores ──< servidores_grupos >── grupos_servidores
 ```
@@ -23,6 +24,8 @@ servidores ──< servidores_grupos >── grupos_servidores
 - `usuarios`, `roles` y `permisos` implementan el control de acceso persistente.
 - `registros_auditoria` conserva actor, acción, recurso, resultado, canal,
   origen e identificador de solicitud.
+- `identidades_mensajeria` vincula como máximo una identidad de cada canal con
+  cada usuario. El identificador externo no puede pertenecer a dos usuarios.
 
 Las migraciones versionadas son la fuente de verdad del esquema. Se aplican con:
 
@@ -121,9 +124,8 @@ curl --user administrador_local --request POST \
   http://127.0.0.1:8000/api/v1/servidores/1/comprobar-conexion
 ```
 
-Esta ruta solo ejecuta el saludo interno del adaptador. Las acciones del hito 4
-se documentan en `motor_acciones.md`. Antes del hito 5 todavía no existe un bot
-de Telegram.
+Esta ruta solo ejecuta el saludo interno del adaptador. Las acciones se
+documentan en `motor_acciones.md` y su uso desde Telegram en `telegram.md`.
 
 ## Comportamiento de seguridad
 
@@ -136,8 +138,11 @@ de Telegram.
 - Las eliminaciones de servidores y grupos necesitan confirmación explícita.
 - Los errores enviados al cliente no incluyen credenciales ni detalles de la
   conexión a MariaDB.
-- La auditoría contempla desde ahora los canales `api`, `sistema`, `telegram` y
-  `slack`, aunque los dos últimos todavía no estén implementados.
+- Telegram exige simultáneamente una identidad vinculada activa, un usuario
+  activo y el permiso de la acción. El nombre visible y el número telefónico no
+  participan en la autenticación.
+- La auditoría distingue los canales `api`, `sistema`, `telegram` y `slack`.
+  Telegram ya está implementado; Slack permanece reservado para el hito 9.
 
 La autenticación HTTP Basic es exclusivamente una adaptación del laboratorio
 local. El backend debe permanecer en `127.0.0.1`; no se debe exponer esta API a

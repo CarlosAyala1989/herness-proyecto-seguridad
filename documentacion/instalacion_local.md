@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 a 4 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 5 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -15,6 +15,7 @@ imagen oficial `mariadb:11.8.9`, perteneciente a la serie LTS 11.8. SQLAlchemy
 usa su API asíncrona con el controlador `asyncmy`; Alembic mantiene el esquema y
 `pwdlib` protege las contraseñas locales mediante Argon2.
 AsyncSSH aporta el cliente asíncrono y reutilizable para Linux y Windows Server.
+`python-telegram-bot` 22.8 proporciona la interfaz asíncrona con Telegram.
 
 Referencias de la selección:
 
@@ -25,6 +26,8 @@ Referencias de la selección:
 - [Hash de contraseñas en FastAPI](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/#hash-and-verify-the-passwords)
 - [Documentación de pwdlib](https://frankie567.github.io/pwdlib/)
 - [Documentación de AsyncSSH](https://asyncssh.readthedocs.io/en/stable/)
+- [Documentación de python-telegram-bot](https://docs.python-telegram-bot.org/en/stable/)
+- [API oficial para bots de Telegram](https://core.telegram.org/bots/api)
 - [Configuración con Pydantic](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - [Variables de la imagen oficial de MariaDB](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables)
 
@@ -102,11 +105,12 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0003 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0004 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
 La tercera incorpora permisos separados para lectura remota y reinicio.
+La cuarta añade las identidades externas autorizadas para mensajería.
 
 ## 5. Crear el primer administrador
 
@@ -163,7 +167,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -195,13 +199,59 @@ curl --user administrador_local \
 ```
 
 No inicies el backend con `--host 0.0.0.0`: HTTP Basic debe quedar limitado a
-`127.0.0.1` mientras no exista una terminación TLS. Los canales de mensajería
-usarán después su propia identidad y delegarán los permisos al mismo backend.
+`127.0.0.1` mientras no exista una terminación TLS. Telegram utiliza su propia
+identidad persistente y delega los permisos al mismo backend.
 
 Si MariaDB no está disponible, `/salud` responde con estado HTTP `503` y un
 mensaje controlado. No devuelve la URL de conexión ni la contraseña.
 
-## 8. Ejecutar comprobaciones
+## 8. Activar Telegram
+
+Crea un bot con la cuenta oficial `@BotFather` y conserva el token únicamente
+en el `.env` local. Modifica estas variables sin compartir su valor:
+
+```dotenv
+HERMES_TELEGRAM_HABILITADO=true
+HERMES_TOKEN_TELEGRAM=token_real_entregado_por_botfather
+```
+
+Inicia el bot en una terminal dedicada:
+
+```bash
+source .venv/bin/activate
+python -m aplicacion.interfaces.telegram
+```
+
+Hermes usa sondeo saliente, de modo que no necesita dominio, webhook ni un
+puerto público. En una conversación privada con el bot, envía `/inicio`. Si la
+cuenta todavía no está vinculada, la respuesta mostrará tu identificador
+numérico de Telegram. Autorízalo desde otra terminal:
+
+```bash
+python -m aplicacion.comandos.vincular_usuario_telegram \
+  --usuario administrador_local \
+  --identificador-telegram 123456789 \
+  --nombre-telegram nombre_visible_opcional
+```
+
+Sustituye `123456789` por el identificador mostrado. El nombre visible es solo
+una referencia; Hermes siempre autentica con el identificador numérico. Para
+revocar el acceso de Telegram sin desactivar el usuario local:
+
+```bash
+python -m aplicacion.comandos.desvincular_usuario_telegram \
+  --usuario administrador_local
+```
+
+El bot y FastAPI son procesos distintos que importan los mismos servicios del
+backend y usan la misma MariaDB. No es obligatorio mantener FastAPI iniciado
+para usar Telegram, pero MariaDB, OpenSSH y `ssh-agent` sí deben estar
+disponibles cuando la referencia del servidor los requiera.
+
+Consulta `documentacion/telegram.md` para registrar el Ubuntu anfitrión y probar
+los comandos sin ejecutar un reinicio.
+
+## 9. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -224,12 +274,12 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 4 ejecuta un catálogo pequeño de acciones predefinidas, comprueba el
-permiso específico, valida parámetros, normaliza resultados y audita cada
-servidor. Telegram llegará en el hito 5; métricas y servicios se incorporarán
+El hito 5 integra Telegram con el catálogo predefinido, los permisos, el
+inventario, SSH y la auditoría existentes. Métricas y servicios se incorporarán
 en los hitos 6 y 7.
 
-Por ello todavía no debe intentarse administrar el Ubuntu anfitrión desde
-Telegram. Las acciones de lectura ya funcionan desde el backend. El reinicio
-requiere el permiso `reiniciar_servidor` y `confirmar: true`; no debe probarse
-sobre el anfitrión salvo que el reinicio haya sido planificado expresamente.
+Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
+un usuario vinculado y un servidor activo. El reinicio requiere permiso y una
+confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
+planificado expresamente. Todavía no existen métricas, gestión de servicios,
+operaciones simultáneas ni Slack.
