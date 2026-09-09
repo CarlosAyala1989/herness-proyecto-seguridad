@@ -251,8 +251,7 @@ async def evaluar_resultado_sondeo(
     alertas_activas = list(
         (
             await sesion.scalars(
-                select(Alerta)
-                .where(
+                select(Alerta).where(
                     Alerta.id_servidor == id_servidor,
                     Alerta.estado == EstadoAlerta.ACTIVA,
                 )
@@ -295,8 +294,7 @@ async def cerrar_alertas_por_monitoreo_inactivo(
     alertas = list(
         (
             await sesion.scalars(
-                select(Alerta)
-                .where(
+                select(Alerta).where(
                     Alerta.id_servidor == objetivo.servidor.id_servidor,
                     Alerta.estado == EstadoAlerta.ACTIVA,
                 )
