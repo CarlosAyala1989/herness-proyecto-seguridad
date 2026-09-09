@@ -88,7 +88,8 @@ Tiempo de actividad: 1 d, 1 h, 1 min
 
 La gestión de servicios ya está incorporada y se documenta en `servicios.md`.
 La ejecución simultánea sobre IDs, grupos o todos los servidores activos está
-disponible desde el hito 8. Las alertas automáticas pertenecen al hito 10.
+disponible desde el hito 8. El hito 10 reutiliza este diagnóstico para alertas
+automáticas persistentes y se documenta en `monitoreo_automatico.md`.
 
 ## Referencias técnicas
 

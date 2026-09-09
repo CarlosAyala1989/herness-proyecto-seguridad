@@ -7,6 +7,11 @@ directamente y no mantiene una lista de usuarios dentro del código. Cada
 interacción consulta MariaDB y delega en los servicios de inventario, permisos,
 acciones y auditoría.
 
+Desde el hito 10, el proceso de monitoreo también puede enviar alertas y
+recuperaciones al mismo usuario. La identidad debe estar vinculada, activa y
+suscrita explícitamente mediante las rutas de monitoreo; recibir alertas no
+elude los permisos de los comandos interactivos.
+
 ## Modelo de autorización
 
 Hermes autentica con `User.id`, el identificador numérico que acompaña las

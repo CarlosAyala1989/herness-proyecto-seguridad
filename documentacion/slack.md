@@ -6,6 +6,11 @@ Slack y no publica un webhook, dominio ni puerto adicional. El canal interpreta
 `/hermes`, pero inventario, permisos, acciones, SSH y auditoría permanecen en
 los mismos servicios utilizados por FastAPI y Telegram.
 
+Desde el hito 10, el proceso de monitoreo puede entregar alertas y
+recuperaciones mediante `chat.postMessage`. La identidad debe continuar activa
+y tener una suscripción habilitada por un administrador. El envío automático
+no abre Socket Mode ni concede permisos administrativos adicionales.
+
 ## Controles de acceso
 
 Hermes no autoriza por nombre visible, correo ni teléfono. La identidad

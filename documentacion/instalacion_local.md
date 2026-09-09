@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 a 9 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 10 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -118,7 +118,7 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0006 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0007 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
@@ -127,6 +127,8 @@ La cuarta añade las identidades externas autorizadas para mensajería.
 La quinta incorpora el permiso de diagnóstico para administrador y operador.
 La sexta separa la consulta de servicios de las operaciones que cambian su
 estado.
+La séptima incorpora configuraciones de monitoreo, servicios críticos, alertas,
+suscripciones, entregas y permisos de consulta y administración.
 
 ## 5. Crear el primer administrador
 
@@ -188,7 +190,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -321,7 +323,37 @@ Slack utiliza Socket Mode saliente: no abras puertos del router ni expongas el
 backend. Consulta `documentacion/slack.md` para crear la aplicación con permisos
 mínimos, probar comandos y revocar una vinculación.
 
-## 10. Ejecutar comprobaciones
+## 10. Activar el monitoreo automático
+
+Configura primero las políticas y suscripciones mediante la API siguiendo
+`documentacion/monitoreo_automatico.md`. Ejecuta después una sola vuelta segura:
+
+```bash
+source .venv/bin/activate
+python -m aplicacion.monitoreo --una-vez
+```
+
+Para mantener el proceso periódico, activa sus límites en `.env`:
+
+```dotenv
+HERMES_MONITOREO_HABILITADO=true
+HERMES_INTERVALO_MONITOREO_SEGUNDOS=60
+HERMES_MAX_CONCURRENCIA_MONITOREO=4
+HERMES_TIEMPO_LIMITE_SONDEO_SEGUNDOS=45
+HERMES_MAX_INTENTOS_NOTIFICACION_ALERTA=3
+```
+
+Inicia un único proceso en una terminal dedicada:
+
+```bash
+python -m aplicacion.monitoreo
+```
+
+Este proceso necesita MariaDB y acceso SSH, pero no requiere mantener FastAPI,
+Telegram o Slack Bolt ejecutándose. Usa directamente los tokens configurados
+para las entregas salientes.
+
+## 11. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -344,14 +376,15 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 9 añade Slack Bolt mediante Socket Mode, vinculación persistente por
-espacio y usuario, comandos equivalentes y auditoría diferenciada. Slack,
-Telegram y FastAPI reutilizan inventario, permisos, acciones, concurrencia, SSH
-y MariaDB.
+El hito 10 añade políticas persistentes por servidor, sondeos concurrentes,
+episodios deduplicados, recuperación y entregas reintentables. El proceso
+reutiliza inventario, adaptadores, SSH y MariaDB sin convertir los canales de
+mensajería en backends independientes.
 
 Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
 un usuario vinculado y servidores activos. El reinicio requiere permiso y una
 confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
 planificado expresamente. Las mutaciones de servicios también exigen permiso,
 confirmación y privilegios remotos limitados. El monitoreo automático y las
-alertas corresponden al hito 10.
+alertas ya están disponibles. La programación persistente de tareas
+administrativas corresponde al hito 11.

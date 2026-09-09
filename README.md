@@ -4,11 +4,11 @@ Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
 hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
 de acciones administrativas controladas, diagnóstico, administración de
-servicios y operaciones múltiples desde Telegram y Slack.
+servicios, operaciones múltiples y alertas automáticas desde Telegram y Slack.
 
 ## Estado actual
 
-Hitos 1 a 9 completados. Hermes 0.9.0 proporciona:
+Hitos 1 a 10 completados. Hermes 0.10.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -48,7 +48,11 @@ Hitos 1 a 9 completados. Hermes 0.9.0 proporciona:
 - Slack Bolt asíncrono mediante Socket Mode saliente;
 - comando `/hermes` con selección y acciones equivalentes a Telegram;
 - autorización por espacio de trabajo y usuario Slack vinculados en MariaDB;
-- confirmaciones interactivas, límites y auditoría identificada como Slack.
+- confirmaciones interactivas, límites y auditoría identificada como Slack;
+- monitoreo periódico concurrente de disponibilidad, CPU, memoria y disco;
+- comprobación de servicios críticos configurables por servidor;
+- alertas persistentes y deduplicadas con registro de recuperación;
+- suscripciones explícitas y entregas reintentables por Telegram y Slack.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 `obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
@@ -148,3 +152,5 @@ La preparación de cuentas y administración de servicios se explica en
 [`documentacion/servicios.md`](documentacion/servicios.md).
 La selección, concurrencia y consolidación se detallan en
 [`documentacion/operaciones_multiples.md`](documentacion/operaciones_multiples.md).
+Los umbrales, suscripciones, alertas y proceso periódico se detallan en
+[`documentacion/monitoreo_automatico.md`](documentacion/monitoreo_automatico.md).

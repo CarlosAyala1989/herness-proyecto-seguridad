@@ -1,7 +1,7 @@
 # Inventario y seguridad
 
 Este documento describe el inventario y el modelo de acceso incorporados desde
-el hito 2 y ampliados hasta el hito 9. Todas las rutas HTTP funcionales usan el
+el hito 2 y ampliados hasta el hito 10. Todas las rutas HTTP funcionales usan el
 prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
 correspondiente en MariaDB.
 
@@ -14,6 +14,11 @@ usuarios ──< usuarios_roles >── roles ──< roles_permisos >── per
    └──< identidades_mensajeria
 
 servidores ──< servidores_grupos >── grupos_servidores
+     │
+     ├── configuraciones_monitoreo ──< servicios_criticos_monitoreo
+     └──< alertas ──< notificaciones_alertas
+
+identidades_mensajeria ── suscripciones_alertas
 ```
 
 - `servidores` admite equipos `linux` y `windows_server`, una dirección y un
@@ -28,6 +33,12 @@ servidores ──< servidores_grupos >── grupos_servidores
   cada usuario. El identificador externo no puede pertenecer a dos usuarios.
   Telegram conserva su identificador numérico; Slack conserva la combinación
   `team_id:user_id`, por lo que una cuenta de otro espacio no hereda acceso.
+- `configuraciones_monitoreo` y `servicios_criticos_monitoreo` definen las
+  comprobaciones de lectura de cada servidor.
+- `alertas` conserva episodios activos y recuperados; `notificaciones_alertas`
+  registra entregas y reintentos por destinatario.
+- `suscripciones_alertas` exige una habilitación explícita antes de enviar una
+  alerta a una identidad vinculada.
 
 Las migraciones versionadas son la fuente de verdad del esquema. Se aplican con:
 
@@ -62,13 +73,15 @@ La migración registra estos permisos:
 | `consultar_diagnostico` | Consultar disponibilidad, recursos y datos normalizados del sistema. |
 | `consultar_servicios` | Consultar el estado de servicios remotos. |
 | `gestionar_servicios` | Iniciar, detener y reiniciar servicios remotos confirmados. |
+| `consultar_monitoreo` | Consultar políticas, destinos y episodios de alerta. |
+| `gestionar_monitoreo` | Configurar umbrales, servicios críticos y suscripciones. |
 
 Los roles iniciales son `administrador`, `operador_inventario` y `auditor`. El
 administrador reúne todos los permisos; el operador puede consultar y gestionar
 el inventario, comprobar conexiones, ejecutar las acciones de lectura, obtener
-diagnósticos y consultar servicios; el auditor solo puede consultar inventario
-y auditoría. Únicamente el administrador inicial recibe los permisos de
-reinicio del servidor y gestión de servicios.
+diagnósticos, servicios y monitoreo; el auditor puede consultar inventario,
+auditoría y monitoreo. Únicamente el administrador recibe los permisos de
+reinicio, gestión de servicios y configuración del monitoreo.
 
 El primer administrador se crea mediante el comando interactivo documentado en
 `instalacion_local.md`. Hermes impide retirar el último rol administrador activo
@@ -95,6 +108,11 @@ para no dejar el sistema sin una vía de administración.
 | `POST /api/v1/servidores/{id_servidor}/comprobar-conexion` | `comprobar_conexion` | Verificar identidad, autenticación y plataforma. |
 | `GET /api/v1/acciones` | Según cada acción | Mostrar solo las acciones permitidas al usuario. |
 | `POST /api/v1/servidores/{id_servidor}/acciones/{codigo_accion}` | Según la acción | Validar, ejecutar, normalizar y auditar una acción registrada. |
+| `GET /api/v1/monitoreo/configuraciones` | `consultar_monitoreo` | Consultar umbrales y servicios críticos. |
+| `PUT /api/v1/monitoreo/servidores/{id_servidor}` | `gestionar_monitoreo` | Crear o reemplazar una política. |
+| `GET /api/v1/monitoreo/destinos` | `gestionar_monitoreo` | Listar identidades elegibles y suscripciones. |
+| `PUT /api/v1/monitoreo/destinos/{id_identidad}` | `gestionar_monitoreo` | Activar o desactivar una suscripción. |
+| `GET /api/v1/alertas` | `consultar_monitoreo` | Consultar episodios activos o recuperados. |
 
 Las colecciones aceptan `desplazamiento` y `limite`; el límite por página es
 100, pero no existe un máximo fijo de servidores almacenados.

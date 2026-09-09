@@ -5,7 +5,7 @@
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
 persistencia y contratos externos. Telegram y Slack usan los mismos servicios
 de diagnóstico, inventario, autorización, SSH y auditoría. El orquestador
-múltiple añade concurrencia acotada sin cambiar esos límites.
+múltiple y el monitor añaden concurrencia acotada sin cambiar esos límites.
 
 ## Componentes actuales
 
@@ -27,6 +27,10 @@ Slack ─────► interfaz/slack ─────┘                │
                                                                 ▼
                                                         servidores SSH
 ```
+
+El proceso `aplicacion.monitoreo` entra directamente por servicios internos,
+sin simular un usuario de Telegram, Slack o HTTP. Ejecuta únicamente acciones
+de lectura del catálogo y registra las transiciones con canal `sistema`.
 
 - `configuracion.py` carga y valida variables de entorno. Las contraseñas se
   representan con `SecretStr` y la URL se construye con `SQLAlchemy.URL` para
@@ -61,6 +65,13 @@ Slack ─────► interfaz/slack ─────┘                │
   ejecuta por sondeo saliente y no publica un webhook ni puertos nuevos.
 - `interfaces/slack/` traduce `/hermes` y botones mediante Bolt asíncrono. Usa
   Socket Mode saliente y tampoco publica puertos.
+- `monitoreo/sondeador.py` obtiene diagnóstico y servicios críticos mediante
+  una conexión reutilizada por servidor y un plazo total.
+- `monitoreo/evaluador.py` convierte lecturas en episodios deduplicados y
+  recuperaciones auditadas.
+- `monitoreo/notificaciones.py` materializa una entrega por suscripción,
+  reintenta fallos y adapta Telegram o Slack sin conocer SSH.
+- `monitoreo/motor.py` limita la concurrencia y aísla el fallo de cada destino.
 - `conexiones/transporte_ssh.py` contiene la conexión AsyncSSH, la doble
   validación de host, los plazos y la recolección acotada de salida.
 - `conexiones/credenciales.py` resuelve referencias de archivo confinadas o el
@@ -178,6 +189,12 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   `127.0.0.1`; cualquier exposición de red futura exigirá TLS.
 - Las dependencias directas están fijadas y se verifican mediante pruebas antes
   de actualizarse.
+- Cada condición de monitoreo dispone de una clave activa única; los ciclos
+  repetidos actualizan el episodio en lugar de crear alertas duplicadas.
+- Las recuperaciones solo se notifican a destinos que recibieron la apertura.
+  Cada intento queda persistido y se detiene al alcanzar el máximo configurado.
+- Los destinos de alerta deben ser identidades activas, pertenecer a usuarios
+  activos y contar con una suscripción explícita habilitada por un administrador.
 
 ## Administración futura del Ubuntu anfitrión
 
