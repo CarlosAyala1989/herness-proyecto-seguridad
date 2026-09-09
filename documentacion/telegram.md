@@ -1,6 +1,7 @@
 # Integración con Telegram
 
-El hito 5 incorpora Telegram como una interfaz del backend común de Hermes. El
+Telegram es una interfaz del backend común de Hermes y en el hito 6 incorpora
+el diagnóstico uniforme. El
 bot no construye órdenes del sistema, no se conecta por SSH directamente y no
 mantiene una lista de usuarios dentro del código. Cada interacción consulta
 MariaDB y delega en los servicios de inventario, permisos, acciones y auditoría.
@@ -50,7 +51,7 @@ representación no lo exponga accidentalmente.
 
 ## Preparar el usuario autorizado
 
-Aplica primero la migración `0004` y crea un administrador si aún no existe:
+Aplica primero las migraciones hasta `0005` y crea un administrador si aún no existe:
 
 ```bash
 source .venv/bin/activate
@@ -138,6 +139,7 @@ preparar el inventario y administrar usuarios.
 | `/servidores` | Lista los servidores activos con botones de selección. |
 | `/seleccionar <id>` | Selecciona un servidor mediante un entero validado. |
 | `/seleccion` | Vuelve a validar y muestra el servidor actual. |
+| `/diagnostico` | Muestra disponibilidad, CPU, RAM, disco, actividad, sistema y versión. |
 | `/identidad` | Ejecuta `obtener_identidad` sobre el servidor actual. |
 | `/proceso <id>` | Ejecuta `consultar_proceso` con un identificador acotado. |
 | `/reiniciar` | Solicita una confirmación efímera antes del reinicio. |
@@ -153,9 +155,10 @@ Con el bot, MariaDB, OpenSSH y el agente activos:
 1. Envía `/servidores`.
 2. Pulsa `ubuntu-laboratorio`.
 3. Envía `/seleccion` y verifica nombre y sistema.
-4. Envía `/identidad` y comprueba el usuario remoto y el nombre del equipo.
-5. Envía `/proceso 1` y comprueba que se informa el proceso del sistema.
-6. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
+4. Envía `/diagnostico` y comprueba los recursos y datos reales del equipo.
+5. Envía `/identidad` y comprueba el usuario remoto y el nombre del equipo.
+6. Envía `/proceso 1` y comprueba que se informa el proceso del sistema.
+7. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
    `telegram`.
 
 No uses `/reiniciar` para una demostración ordinaria. Su confirmación autoriza

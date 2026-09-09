@@ -3,8 +3,8 @@
 ## Objetivo actual
 
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
-persistencia y contratos externos. El hito 5 conecta Telegram con esos mismos
-servicios sin duplicar inventario, autorización, SSH ni auditoría.
+persistencia y contratos externos. Telegram y el diagnóstico del hito 6 usan
+esos mismos servicios sin duplicar inventario, autorización, SSH ni auditoría.
 
 ## Componentes actuales
 
@@ -61,6 +61,8 @@ Telegram ──► interfaz/telegram ──► gestor_telegram
 - `adaptadores/linux.py` y `adaptadores/windows.py` encapsulan las diferencias
   de plataforma. PowerShell nunca aparece en las rutas ni en las interfaces de
   mensajería.
+- `adaptadores/diagnostico.py` valida y normaliza el contrato común de métricas;
+  los valores ausentes se representan con `None` dentro del backend.
 - `servicios/auditoria.py` registra el actor, la acción, el recurso y el
   resultado dentro de la misma base de datos.
 - `modelos/` define inventario, control de acceso y auditoría. Las relaciones de
@@ -118,6 +120,12 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   plazos independientes.
 - El código de acción se busca en un diccionario inmutable. Un código desconocido
   obtiene un error controlado y jamás se trata como comando.
+- El diagnóstico usa un guion interno fijo por plataforma. Linux consulta
+  `/proc` y `df`; Windows consulta clases CIM mediante PowerShell. Ninguno acepta
+  texto, rutas o comandos aportados por el usuario.
+- La salida diagnóstica exige exactamente el marcador y los campos esperados;
+  rechaza duplicados, porcentajes fuera de `0..100`, valores no finitos y tiempos
+  de actividad no enteros.
 - Cada acción usa un modelo Pydantic con campos adicionales prohibidos. El único
   parámetro actual es un identificador de proceso entero y acotado.
 - `reiniciar_servidor` exige un permiso exclusivo y confirmación explícita. Se

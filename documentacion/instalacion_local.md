@@ -105,12 +105,13 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0004 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0005 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
 La tercera incorpora permisos separados para lectura remota y reinicio.
 La cuarta añade las identidades externas autorizadas para mensajería.
+La quinta incorpora el permiso de diagnóstico para administrador y operador.
 
 ## 5. Crear el primer administrador
 
@@ -167,7 +168,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -196,6 +197,11 @@ curl --user administrador_local \
   --header 'Content-Type: application/json' \
   --data '{}' \
   http://127.0.0.1:8000/api/v1/servidores/1/acciones/obtener_identidad
+
+curl --user administrador_local \
+  --header 'Content-Type: application/json' \
+  --data '{}' \
+  http://127.0.0.1:8000/api/v1/servidores/1/acciones/obtener_diagnostico
 ```
 
 No inicies el backend con `--host 0.0.0.0`: HTTP Basic debe quedar limitado a
@@ -274,12 +280,12 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 5 integra Telegram con el catálogo predefinido, los permisos, el
-inventario, SSH y la auditoría existentes. Métricas y servicios se incorporarán
-en los hitos 6 y 7.
+El hito 6 incorpora métricas normalizadas para Linux y Windows Server al
+catálogo, la API y Telegram. La administración de servicios se incorporará en
+el hito 7.
 
 Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
 un usuario vinculado y un servidor activo. El reinicio requiere permiso y una
 confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
-planificado expresamente. Todavía no existen métricas, gestión de servicios,
-operaciones simultáneas ni Slack.
+planificado expresamente. Todavía no existen gestión de servicios, operaciones
+simultáneas ni Slack.

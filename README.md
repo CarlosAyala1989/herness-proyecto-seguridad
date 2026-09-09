@@ -3,11 +3,11 @@
 Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
 hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
-de acciones administrativas controladas y una interfaz Telegram.
+de acciones administrativas controladas, diagnóstico y una interfaz Telegram.
 
 ## Estado actual
 
-Hitos 1 a 5 completados. Hermes 0.5.0 proporciona:
+Hitos 1 a 6 completados. Hermes 0.6.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -32,12 +32,16 @@ Hitos 1 a 5 completados. Hermes 0.5.0 proporciona:
 - bot Telegram mediante sondeo saliente, sin publicar puertos adicionales;
 - autorización por identificador numérico de Telegram vinculado en MariaDB;
 - selección de servidor, comandos de lectura y confirmación interactiva;
-- revocación local, límite de frecuencia y restricción a chats privados.
+- revocación local, límite de frecuencia y restricción a chats privados;
+- diagnóstico uniforme de disponibilidad, CPU, RAM, disco, tiempo de actividad,
+  sistema, versión y nombre del equipo;
+- recopiladores independientes para Linux y Windows Server con métricas no
+  disponibles representadas explícitamente, sin detener las demás lecturas.
 
-Las acciones disponibles son `obtener_identidad`, `consultar_proceso` y
-`reiniciar_servidor`. Telegram ya reutiliza esas acciones. Todavía no se incluyen
-métricas ni administración de servicios; corresponden a los hitos 6 y 7. Slack
-se incorporará en el hito 9.
+Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
+`obtener_diagnostico` y `reiniciar_servidor`. Telegram ya reutiliza esas
+acciones. La administración de servicios corresponde al hito 7 y Slack se
+incorporará en el hito 9.
 
 ## Requisitos locales
 
@@ -123,3 +127,5 @@ El catálogo y sus controles se describen en
 [`documentacion/motor_acciones.md`](documentacion/motor_acciones.md).
 La activación y el uso del bot se explican en
 [`documentacion/telegram.md`](documentacion/telegram.md).
+La obtención y normalización de métricas se detalla en
+[`documentacion/diagnostico.md`](documentacion/diagnostico.md).

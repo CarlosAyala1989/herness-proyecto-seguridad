@@ -1,7 +1,7 @@
 # Inventario y seguridad
 
 Este documento describe el inventario y el modelo de acceso incorporados desde
-el hito 2 y ampliados hasta el hito 5. Todas las rutas HTTP funcionales usan el
+el hito 2 y ampliados hasta el hito 6. Todas las rutas HTTP funcionales usan el
 prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
 correspondiente en MariaDB.
 
@@ -57,11 +57,12 @@ La migración registra estos permisos:
 | `comprobar_conexion` | Comprobar SSH y plataforma mediante saludos fijos. |
 | `ejecutar_acciones_lectura` | Ejecutar acciones remotas predefinidas de solo lectura. |
 | `reiniciar_servidor` | Programar el reinicio confirmado de un servidor. |
+| `consultar_diagnostico` | Consultar disponibilidad, recursos y datos normalizados del sistema. |
 
 Los roles iniciales son `administrador`, `operador_inventario` y `auditor`. El
 administrador reúne todos los permisos; el operador puede consultar y gestionar
-el inventario, comprobar conexiones y ejecutar las acciones de lectura; el
-auditor solo puede consultar inventario y auditoría. Únicamente el administrador
+el inventario, comprobar conexiones, ejecutar las acciones de lectura y obtener
+diagnósticos; el auditor solo puede consultar inventario y auditoría. Únicamente el administrador
 inicial recibe el permiso de reinicio.
 
 El primer administrador se crea mediante el comando interactivo documentado en

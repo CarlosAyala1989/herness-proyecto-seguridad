@@ -43,6 +43,7 @@ Los parámetros y la salida remota no se copian al detalle de auditoría.
 | `obtener_identidad` | `ejecutar_acciones_lectura` | Ninguno | No | Usuario remoto y nombre del equipo. |
 | `consultar_proceso` | `ejecutar_acciones_lectura` | `id_proceso`, entero entre 1 y 4 194 304 | No | Identificador y nombre del proceso. |
 | `reiniciar_servidor` | `reiniciar_servidor` | Ninguno | Sí | Reinicio programado con 60 segundos de margen. |
+| `obtener_diagnostico` | `consultar_diagnostico` | Ninguno | No | Disponibilidad, CPU, RAM, disco, actividad, sistema, versión y equipo. |
 
 Linux usa herramientas del sistema y Windows Server invoca PowerShell de forma
 no interactiva. Ambos adaptadores producen los mismos campos de respuesta. Un
@@ -65,6 +66,15 @@ curl --user administrador_local \
   --header 'Content-Type: application/json' \
   --data '{}' \
   http://127.0.0.1:8000/api/v1/servidores/1/acciones/obtener_identidad
+```
+
+Obtén el diagnóstico completo con una única conexión controlada:
+
+```bash
+curl --user administrador_local \
+  --header 'Content-Type: application/json' \
+  --data '{}' \
+  http://127.0.0.1:8000/api/v1/servidores/1/acciones/obtener_diagnostico
 ```
 
 Consulta un proceso mediante un identificador numérico:
@@ -111,10 +121,10 @@ simulado y no reinician el sistema local.
 
 ## Comprobaciones realizadas en el laboratorio
 
-Las acciones de lectura se ejecutaron a través de la API completa contra el
-Ubuntu 24.04 anfitrión por OpenSSH en `127.0.0.1`. Se verificaron la identidad
-remota y el proceso con identificador 1. Los datos temporales del inventario se
-eliminaron al terminar.
+Las acciones de lectura se ejecutaron a través del backend común contra el
+Ubuntu anfitrión por OpenSSH en `127.0.0.1`. Se verificaron la identidad remota,
+el proceso con identificador 1 y el diagnóstico real. Los datos temporales del
+inventario se eliminaron al terminar.
 
 No hay una máquina virtual Windows Server disponible en este laboratorio. El
 adaptador PowerShell y la normalización se validan mediante pruebas automatizadas,
