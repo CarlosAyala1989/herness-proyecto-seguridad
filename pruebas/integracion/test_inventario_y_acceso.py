@@ -164,6 +164,22 @@ async def test_crud_persistente_permisos_y_auditoria(
         nombres = {item["nombre"] for item in consulta_persistente.json()}
         assert {item["nombre"] for item in servidores}.issubset(nombres)
 
+        motor_reiniciado = crear_motor_base_datos(Configuracion())  # type: ignore[call-arg]
+        aplicacion_reiniciada = crear_aplicacion(Configuracion(), motor_reiniciado)  # type: ignore[call-arg]
+        transporte_reiniciado = httpx.ASGITransport(app=aplicacion_reiniciada)
+        async with httpx.AsyncClient(
+            transport=transporte_reiniciado,
+            base_url="http://reinicio-pruebas",
+        ) as cliente_reiniciado:
+            respuesta_reinicio = await cliente_reiniciado.get(
+                "/api/v1/servidores",
+                auth=autenticacion_admin,
+            )
+        await motor_reiniciado.dispose()
+        assert respuesta_reinicio.status_code == 200
+        nombres_reinicio = {item["nombre"] for item in respuesta_reinicio.json()}
+        assert {item["nombre"] for item in servidores}.issubset(nombres_reinicio)
+
         duplicado = await cliente.post(
             "/api/v1/servidores",
             auth=autenticacion_admin,

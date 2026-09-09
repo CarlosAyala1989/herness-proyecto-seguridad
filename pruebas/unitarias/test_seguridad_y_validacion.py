@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from aplicacion.esquemas.inventario import CrearServidor
 from aplicacion.modelos.enumeraciones import SistemaOperativo
+from aplicacion.modelos.servidor import Servidor
 from aplicacion.seguridad.contrasenas import (
     generar_hash_contrasena,
     verificar_contrasena,
@@ -20,6 +21,15 @@ def test_contrasena_se_almacena_como_hash_argon2() -> None:
     assert hash_generado.startswith("$argon2")
     assert verificar_contrasena(contrasena, hash_generado)
     assert not verificar_contrasena("frase-incorrecta", hash_generado)
+
+
+def test_servidor_solo_guarda_referencia_de_credencial() -> None:
+    columnas = set(Servidor.__table__.columns.keys())
+
+    assert "referencia_credencial" in columnas
+    assert "hash_contrasena" not in columnas
+    assert "contrasena" not in columnas
+    assert "clave_privada" not in columnas
 
 
 @pytest.mark.parametrize(

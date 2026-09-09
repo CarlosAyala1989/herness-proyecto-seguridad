@@ -31,7 +31,7 @@ async def test_salud_confirma_backend_y_base_datos(
     assert respuesta.status_code == 200
     assert respuesta.json() == {
         "aplicacion": "Hermes",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "estado": "saludable",
         "base_datos": {"estado": "disponible", "tiempo_respuesta_ms": 1.25},
     }

@@ -7,6 +7,8 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
+from aplicacion import __version__
+
 
 class Configuracion(BaseSettings):
     """Configuración validada obtenida del entorno y del archivo local `.env`."""
@@ -20,7 +22,7 @@ class Configuracion(BaseSettings):
     )
 
     nombre_aplicacion: str = "Hermes"
-    version_aplicacion: str = "0.1.0"
+    version_aplicacion: str = __version__
     entorno: Literal["desarrollo", "pruebas", "produccion"] = "desarrollo"
     host_api: str = "127.0.0.1"
     puerto_api: int = Field(default=8000, ge=1, le=65535)
