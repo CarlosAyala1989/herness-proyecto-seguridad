@@ -1,6 +1,7 @@
 """Carga y validación de la configuración de Hermes."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr
@@ -34,6 +35,15 @@ class Configuracion(BaseSettings):
     usuario_base_datos: str = Field(min_length=1)
     contrasena_base_datos: SecretStr
     tiempo_espera_base_datos_segundos: float = Field(default=5.0, gt=0, le=60)
+
+    directorio_credenciales_ssh: Path = Path(".secretos/claves_ssh")
+    archivo_hosts_conocidos_ssh: Path = Path(".secretos/hosts_conocidos")
+    tiempo_conexion_ssh_segundos: float = Field(default=10.0, gt=0, le=120)
+    tiempo_autenticacion_ssh_segundos: float = Field(default=10.0, gt=0, le=120)
+    tiempo_operacion_ssh_segundos: float = Field(default=15.0, gt=0, le=300)
+    limite_salida_ssh_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
+    intervalo_mantenimiento_ssh_segundos: float = Field(default=15.0, gt=0, le=300)
+    max_intentos_mantenimiento_ssh: int = Field(default=3, ge=1, le=10)
 
     def construir_url_base_datos(self) -> URL:
         """Construye la URL sin concatenar ni registrar la contraseña en texto claro."""
