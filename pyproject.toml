@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-administracion"
+version = "0.1.0"
+description = "Plataforma centralizada de administración remota mediante mensajería"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "asyncmy==0.2.14",
+    "fastapi==0.141.1",
+    "pydantic-settings==2.15.0",
+    "sqlalchemy[asyncio]==2.0.52",
+    "uvicorn[standard]==0.52.4",
+]
+
+[project.optional-dependencies]
+desarrollo = [
+    "httpx==0.28.1",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["aplicacion*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers -m 'not integracion'"
+asyncio_mode = "auto"
+testpaths = ["pruebas"]
+markers = [
+    "integracion: requiere servicios locales externos, como MariaDB",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["aplicacion"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"pruebas/**/*.py" = ["S101"]
+

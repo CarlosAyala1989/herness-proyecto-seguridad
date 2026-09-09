@@ -1,0 +1,36 @@
+name: hermes
+
+services:
+  base_datos:
+    image: mariadb:11.8.9
+    container_name: hermes-base-datos
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PUERTO_PUBLICADO_BASE_DATOS:-3378}:3306"
+    environment:
+      MARIADB_DATABASE: ${HERMES_NOMBRE_BASE_DATOS:?defina HERMES_NOMBRE_BASE_DATOS}
+      MARIADB_USER: ${HERMES_USUARIO_BASE_DATOS:?defina HERMES_USUARIO_BASE_DATOS}
+      MARIADB_PASSWORD: ${HERMES_CONTRASENA_BASE_DATOS:?defina HERMES_CONTRASENA_BASE_DATOS}
+      MARIADB_ROOT_PASSWORD: ${HERMES_CONTRASENA_RAIZ_BASE_DATOS:?defina HERMES_CONTRASENA_RAIZ_BASE_DATOS}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - datos_mariadb:/var/lib/mysql
+    networks:
+      - red_hermes
+
+volumes:
+  datos_mariadb:
+    name: hermes-datos-mariadb
+
+networks:
+  red_hermes:
+    name: hermes-red
+    driver: bridge
+
