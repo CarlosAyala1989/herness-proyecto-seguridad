@@ -10,11 +10,13 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
+from aplicacion.conexiones.transporte_ssh import crear_transporte_ssh
 from aplicacion.configuracion import Configuracion, obtener_configuracion
 from aplicacion.errores import registrar_manejadores_errores
 from aplicacion.registro_logs import configurar_logs
 from aplicacion.rutas.acceso import enrutador as enrutador_acceso
 from aplicacion.rutas.auditoria import enrutador as enrutador_auditoria
+from aplicacion.rutas.conexiones import enrutador as enrutador_conexiones
 from aplicacion.rutas.inventario import enrutador as enrutador_inventario
 from aplicacion.rutas.salud import enrutador as enrutador_salud
 
@@ -55,6 +57,9 @@ def crear_aplicacion(
     aplicacion.state.configuracion = configuracion
     aplicacion.state.motor_base_datos = motor_base_datos
     aplicacion.state.fabrica_sesiones = crear_fabrica_sesiones(motor_base_datos)
+    aplicacion.state.fabrica_transporte_remoto = lambda servidor: crear_transporte_ssh(
+        servidor, configuracion
+    )
 
     @aplicacion.middleware("http")
     async def registrar_solicitud(
@@ -84,6 +89,7 @@ def crear_aplicacion(
     aplicacion.include_router(enrutador_inventario)
     aplicacion.include_router(enrutador_acceso)
     aplicacion.include_router(enrutador_auditoria)
+    aplicacion.include_router(enrutador_conexiones)
     return aplicacion
 
 
