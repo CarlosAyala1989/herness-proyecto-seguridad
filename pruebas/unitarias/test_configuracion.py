@@ -42,3 +42,14 @@ def test_rechaza_nombre_base_datos_con_caracteres_no_permitidos() -> None:
             usuario_base_datos="usuario_prueba",
             contrasena_base_datos="contrasena_prueba",
         )
+
+
+def test_rechaza_limites_ssh_desactivados() -> None:
+    with pytest.raises(ValidationError):
+        Configuracion(
+            nombre_base_datos="hermes",
+            usuario_base_datos="usuario_prueba",
+            contrasena_base_datos="contrasena_prueba",
+            tiempo_conexion_ssh_segundos=0,
+            limite_salida_ssh_bytes=0,
+        )

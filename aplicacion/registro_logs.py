@@ -21,3 +21,6 @@ def configurar_logs(nivel: str) -> None:
     raiz.setLevel(nivel)
 
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    # Evita que bibliotecas externas registren direcciones, usuarios o comandos.
+    logging.getLogger("asyncssh").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
