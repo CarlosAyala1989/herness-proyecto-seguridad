@@ -364,6 +364,14 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert servicio_sin_confirmar.status_code == 400
         assert servicio_sin_confirmar.json()["codigo"] == "confirmacion_requerida"
 
+        servicio_malicioso = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/consultar_servicio",
+            auth=autenticacion_admin,
+            json={"parametros": {"nombre_servicio": "ssh.service; id"}},
+        )
+        assert servicio_malicioso.status_code == 422
+        assert servicio_malicioso.json()["codigo"] == "parametros_accion_no_validos"
+
         servicio_confirmado = await cliente.post(
             f"/api/v1/servidores/{id_primer_servidor}/acciones/detener_servicio",
             auth=autenticacion_admin,

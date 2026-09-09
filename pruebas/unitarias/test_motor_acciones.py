@@ -7,6 +7,7 @@ import pytest
 from aplicacion.acciones.errores import (
     ErrorAccionNoAutorizada,
     ErrorEjecucionAccion,
+    ErrorGestorServiciosNoDisponible,
     ErrorParametrosAccion,
     ErrorRespuestaAccionNoValida,
     ErrorServicioNoEncontrado,
@@ -250,6 +251,7 @@ def test_servicios_generan_ordenes_especificas_sin_forzar_dependencias(
     assert orden_windows in guion_windows
     assert "hermes-prueba.service" in linux.comando
     assert "hermes-prueba.service" in guion_windows
+    assert "--force" not in linux.comando
     assert " -Force" not in guion_windows
 
 
@@ -303,6 +305,16 @@ def test_informa_servicio_inexistente_sin_exponer_salida_interna() -> None:
 
     assert captura.value.codigo == "servicio_no_encontrado"
     assert "secreto-que-no-debe-salir" not in captura.value.mensaje
+
+
+def test_informa_gestor_de_servicios_no_disponible() -> None:
+    with pytest.raises(ErrorGestorServiciosNoDisponible) as captura:
+        AdaptadorLinux().interpretar_accion(
+            CodigoAccion.CONSULTAR_SERVICIO,
+            _resultado("HERMES_ERROR=gestor_servicios_no_disponible\n"),
+        )
+
+    assert captura.value.codigo == "gestor_servicios_no_disponible"
 
 
 @pytest.mark.parametrize(
