@@ -147,8 +147,9 @@ class GestorTelegram:
         identificador_actualizacion: int,
         id_servidor: int,
         codigo_accion: str,
+        datos: SolicitudEjecucionAccion | None = None,
     ) -> ServidorResumen:
-        """Autoriza una acción antes de mostrar su confirmación interactiva."""
+        """Autoriza y valida una acción antes de mostrar su confirmación."""
 
         contexto = self.crear_contexto(identificador_telegram, identificador_actualizacion)
         definicion = obtener_definicion_accion(codigo_accion)
@@ -161,6 +162,7 @@ class GestorTelegram:
                 definicion.codigo_permiso,
                 contexto,
             )
+            definicion.validar_parametros((datos or SolicitudEjecucionAccion()).parametros)
             servidor = await obtener_servidor(sesion, id_servidor)
             if not servidor.activo:
                 raise ErrorServidorInactivo()

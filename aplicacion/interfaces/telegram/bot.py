@@ -29,7 +29,9 @@ from aplicacion.servicios.gestor_telegram import GestorTelegram
 
 registrador = logging.getLogger(__name__)
 CLAVE_SERVIDOR_SELECCIONADO = "id_servidor_seleccionado"
-CLAVE_CONFIRMACION_REINICIO = "confirmacion_reinicio"
+CLAVE_CONFIRMACION_ACCION = "confirmacion_accion"
+# Alias interno conservado para consumidores del hito anterior.
+CLAVE_CONFIRMACION_REINICIO = CLAVE_CONFIRMACION_ACCION
 LIMITE_MENSAJE_TELEGRAM = 4_000
 MAX_SOLICITUDES_TELEGRAM_POR_MINUTO = 30
 MAX_IDENTIDADES_EN_LIMITADOR = 5_000
@@ -38,10 +40,12 @@ MAX_ID_PROCESO = 4_194_304
 
 
 @dataclass(frozen=True, slots=True)
-class ConfirmacionReinicio:
-    """Desafío efímero ligado al usuario y al servidor seleccionado."""
+class ConfirmacionAccionSensible:
+    """Desafío efímero ligado a una acción y un servidor concretos."""
 
     id_servidor: int
+    codigo_accion: str
+    solicitud: SolicitudEjecucionAccion
     codigo_aleatorio: str
     vence_en: float
 
@@ -53,6 +57,10 @@ COMANDOS_TELEGRAM = (
     BotCommand("seleccionar", "Seleccionar un servidor por identificador"),
     BotCommand("seleccion", "Mostrar el servidor seleccionado"),
     BotCommand("diagnostico", "Consultar estado y recursos del servidor"),
+    BotCommand("servicio", "Consultar un servicio del sistema"),
+    BotCommand("iniciar_servicio", "Iniciar un servicio con confirmación"),
+    BotCommand("detener_servicio", "Detener un servicio con confirmación"),
+    BotCommand("reiniciar_servicio", "Reiniciar un servicio con confirmación"),
     BotCommand("identidad", "Consultar identidad del servidor seleccionado"),
     BotCommand("proceso", "Consultar un proceso por identificador"),
     BotCommand("reiniciar", "Solicitar un reinicio con confirmación"),
@@ -85,6 +93,10 @@ class InterfazTelegram(CanalMensajeria):
         aplicacion.add_handler(CommandHandler("seleccionar", self.seleccionar_por_comando))
         aplicacion.add_handler(CommandHandler("seleccion", self.mostrar_seleccion))
         aplicacion.add_handler(CommandHandler("diagnostico", self.obtener_diagnostico))
+        aplicacion.add_handler(CommandHandler("servicio", self.consultar_servicio))
+        aplicacion.add_handler(CommandHandler("iniciar_servicio", self.iniciar_servicio))
+        aplicacion.add_handler(CommandHandler("detener_servicio", self.detener_servicio))
+        aplicacion.add_handler(CommandHandler("reiniciar_servicio", self.reiniciar_servicio))
         aplicacion.add_handler(CommandHandler("identidad", self.obtener_identidad))
         aplicacion.add_handler(CommandHandler("proceso", self.consultar_proceso))
         aplicacion.add_handler(CommandHandler("reiniciar", self.solicitar_reinicio))
@@ -97,8 +109,8 @@ class InterfazTelegram(CanalMensajeria):
         )
         aplicacion.add_handler(
             CallbackQueryHandler(
-                self.resolver_reinicio,
-                pattern=r"^reinicio:(confirmar|cancelar):[A-Za-z0-9_-]{8,32}$",
+                self.resolver_accion_sensible,
+                pattern=r"^accion:(confirmar|cancelar):[A-Za-z0-9_-]{8,32}$",
             )
         )
         aplicacion.add_handler(MessageHandler(filters.COMMAND, self.comando_desconocido))
@@ -208,6 +220,10 @@ class InterfazTelegram(CanalMensajeria):
             "/seleccionar <id> — elegir un servidor\n"
             "/seleccion — mostrar la selección actual\n"
             "/diagnostico — consultar estado, recursos y sistema\n"
+            "/servicio <nombre> — consultar un servicio\n"
+            "/iniciar_servicio <nombre> — iniciar con confirmación\n"
+            "/detener_servicio <nombre> — detener con confirmación\n"
+            "/reiniciar_servicio <nombre> — reiniciar con confirmación\n"
             "/identidad — consultar usuario remoto y equipo\n"
             "/proceso <id> — consultar un proceso\n"
             "/reiniciar — solicitar un reinicio confirmado\n"
@@ -284,7 +300,7 @@ class InterfazTelegram(CanalMensajeria):
             await self._responder(actualizacion, f"No fue posible seleccionar: {error.mensaje}")
             return
         contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = servidor.id_servidor
-        contexto.user_data.pop(CLAVE_CONFIRMACION_REINICIO, None)
+        contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
         await self._responder(
             actualizacion,
             f"Servidor seleccionado: {servidor.nombre} (id {servidor.id_servidor}).",
@@ -439,6 +455,33 @@ class InterfazTelegram(CanalMensajeria):
                 "Tiempo de actividad: "
                 f"{self._formatear_tiempo_actividad(datos.get('tiempo_actividad_segundos'))}"
             )
+        if resultado.accion.value in {
+            "consultar_servicio",
+            "iniciar_servicio",
+            "detener_servicio",
+            "reiniciar_servicio",
+        }:
+            datos = resultado.datos
+            inicio_automatico = datos.get("inicio_automatico")
+            if inicio_automatico is True:
+                texto_inicio = "Sí"
+            elif inicio_automatico is False:
+                texto_inicio = "No"
+            else:
+                texto_inicio = "No disponible"
+            operacion = self._formatear_texto_diagnostico(
+                datos.get("accion_realizada")
+            ).capitalize()
+            estado = self._formatear_texto_diagnostico(datos.get("estado")).capitalize()
+            return (
+                f"Servidor: {resultado.nombre_servidor}\n"
+                f"Sistema: {self._formatear_sistema(resultado.sistema_operativo)}\n"
+                f"Operación: {operacion}\n"
+                f"Servicio: {datos.get('nombre_servicio')}\n"
+                f"Estado del servicio: {estado}\n"
+                f"Estado nativo: {datos.get('estado_nativo')}\n"
+                f"Inicio automático: {texto_inicio}"
+            )
         encabezado = (
             f"Servidor: {resultado.nombre_servidor}\n"
             f"Sistema: {self._formatear_sistema(resultado.sistema_operativo)}\n"
@@ -501,12 +544,35 @@ class InterfazTelegram(CanalMensajeria):
             SolicitudEjecucionAccion(parametros={"id_proceso": id_proceso}),
         )
 
-    async def solicitar_reinicio(
+    async def consultar_servicio(
         self,
         actualizacion: Update,
         contexto: CallbackContext,
     ) -> None:
-        """Crea una confirmación de un solo uso sin ejecutar todavía la acción."""
+        """Consulta un nombre exacto mediante el catálogo común."""
+
+        if len(contexto.args) != 1:
+            if await self._autorizar(actualizacion) is not None:
+                await self._responder(actualizacion, "Uso correcto: /servicio <nombre>.")
+            return
+        await self._ejecutar_accion(
+            actualizacion,
+            contexto,
+            "consultar_servicio",
+            SolicitudEjecucionAccion(
+                parametros={"nombre_servicio": contexto.args[0]},
+            ),
+        )
+
+    async def _solicitar_accion_sensible(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+        codigo_accion: str,
+        solicitud: SolicitudEjecucionAccion,
+        descripcion: str,
+    ) -> None:
+        """Crea una confirmación de un uso tras validar permiso y parámetros."""
 
         acceso = await self._autorizar(actualizacion)
         if acceso is None:
@@ -520,45 +586,135 @@ class InterfazTelegram(CanalMensajeria):
                 acceso[0],
                 acceso[1],
                 id_servidor,
-                "reiniciar_servidor",
+                codigo_accion,
+                solicitud,
             )
         except ErrorHermes as error:
             await self._responder(
-                actualizacion, f"No se puede solicitar el reinicio: {error.mensaje}"
+                actualizacion,
+                f"No se puede solicitar la operación: {error.mensaje}",
             )
             return
-        codigo = secrets.token_urlsafe(9)
-        contexto.user_data[CLAVE_CONFIRMACION_REINICIO] = ConfirmacionReinicio(
+        codigo_aleatorio = secrets.token_urlsafe(9)
+        contexto.user_data[CLAVE_CONFIRMACION_ACCION] = ConfirmacionAccionSensible(
             id_servidor=servidor.id_servidor,
-            codigo_aleatorio=codigo,
+            codigo_accion=codigo_accion,
+            solicitud=solicitud,
+            codigo_aleatorio=codigo_aleatorio,
             vence_en=monotonic() + self._configuracion.tiempo_confirmacion_telegram_segundos,
         )
         teclado = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        "Confirmar reinicio",
-                        callback_data=f"reinicio:confirmar:{codigo}",
+                        "Confirmar",
+                        callback_data=f"accion:confirmar:{codigo_aleatorio}",
                     ),
                     InlineKeyboardButton(
                         "Cancelar",
-                        callback_data=f"reinicio:cancelar:{codigo}",
+                        callback_data=f"accion:cancelar:{codigo_aleatorio}",
                     ),
                 ]
             ]
         )
         await self._responder(
             actualizacion,
-            f"¿Confirmas reiniciar {servidor.nombre}? La confirmación caduca pronto.",
+            f"¿Confirmas {descripcion} en {servidor.nombre}? La confirmación caduca pronto.",
             teclado,
         )
 
-    async def resolver_reinicio(
+    async def _solicitar_operacion_servicio(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+        codigo_accion: str,
+        verbo: str,
+        comando: str,
+    ) -> None:
+        if len(contexto.args) != 1:
+            if await self._autorizar(actualizacion) is not None:
+                await self._responder(
+                    actualizacion,
+                    f"Uso correcto: /{comando} <nombre>.",
+                )
+            return
+        nombre_servicio = contexto.args[0]
+        await self._solicitar_accion_sensible(
+            actualizacion,
+            contexto,
+            codigo_accion,
+            SolicitudEjecucionAccion(
+                parametros={"nombre_servicio": nombre_servicio},
+            ),
+            f"{verbo} el servicio {nombre_servicio}",
+        )
+
+    async def iniciar_servicio(
         self,
         actualizacion: Update,
         contexto: CallbackContext,
     ) -> None:
-        """Valida usuario, desafío, caducidad y servidor antes de confirmar."""
+        """Solicita confirmación antes de iniciar un servicio."""
+
+        await self._solicitar_operacion_servicio(
+            actualizacion,
+            contexto,
+            "iniciar_servicio",
+            "iniciar",
+            "iniciar_servicio",
+        )
+
+    async def detener_servicio(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Solicita confirmación antes de detener un servicio."""
+
+        await self._solicitar_operacion_servicio(
+            actualizacion,
+            contexto,
+            "detener_servicio",
+            "detener",
+            "detener_servicio",
+        )
+
+    async def reiniciar_servicio(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Solicita confirmación antes de reiniciar un servicio."""
+
+        await self._solicitar_operacion_servicio(
+            actualizacion,
+            contexto,
+            "reiniciar_servicio",
+            "reiniciar",
+            "reiniciar_servicio",
+        )
+
+    async def solicitar_reinicio(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Solicita confirmación para el reinicio completo del servidor."""
+
+        await self._solicitar_accion_sensible(
+            actualizacion,
+            contexto,
+            "reiniciar_servidor",
+            SolicitudEjecucionAccion(),
+            "reiniciar el servidor",
+        )
+
+    async def resolver_accion_sensible(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Valida usuario, desafío y caducidad antes de ejecutar la acción ligada."""
 
         consulta = actualizacion.callback_query
         if consulta is None or not isinstance(consulta.data, str):
@@ -567,31 +723,40 @@ class InterfazTelegram(CanalMensajeria):
         if await self._autorizar(actualizacion) is None:
             return
         _, decision, codigo = consulta.data.split(":", maxsplit=2)
-        pendiente = contexto.user_data.pop(CLAVE_CONFIRMACION_REINICIO, None)
+        pendiente = contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
         if (
-            not isinstance(pendiente, ConfirmacionReinicio)
+            not isinstance(pendiente, ConfirmacionAccionSensible)
             or monotonic() > pendiente.vence_en
             or not compare_digest(codigo, pendiente.codigo_aleatorio)
         ):
             await self._responder(actualizacion, "La confirmación no es válida o ha caducado.")
             return
         if decision == "cancelar":
-            await self._responder(actualizacion, "Reinicio cancelado.")
+            await self._responder(actualizacion, "Operación cancelada.")
             return
         contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = pendiente.id_servidor
         await self._ejecutar_accion(
             actualizacion,
             contexto,
-            "reiniciar_servidor",
-            SolicitudEjecucionAccion(confirmar=True),
+            pendiente.codigo_accion,
+            pendiente.solicitud.model_copy(update={"confirmar": True}),
         )
 
+    async def resolver_reinicio(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Alias interno conservado para la integración previa de reinicio."""
+
+        await self.resolver_accion_sensible(actualizacion, contexto)
+
     async def cancelar(self, actualizacion: Update, contexto: CallbackContext) -> None:
-        """Descarta cualquier desafío de reinicio del usuario."""
+        """Descarta cualquier desafío sensible del usuario."""
 
         if await self._autorizar(actualizacion) is None:
             return
-        pendiente = contexto.user_data.pop(CLAVE_CONFIRMACION_REINICIO, None)
+        pendiente = contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
         texto = (
             "Confirmación cancelada."
             if pendiente is not None
