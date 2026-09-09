@@ -11,12 +11,44 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.configuracion import Configuracion
+from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
 from aplicacion.modelos.acceso import Rol, Usuario
 from aplicacion.modelos.grupo_servidor import GrupoServidor
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.principal import crear_aplicacion
 from aplicacion.seguridad.contrasenas import generar_hash_contrasena
+
+
+class TransporteRemotoSimulado:
+    """Sustituye exclusivamente la red al probar la ruta protegida."""
+
+    def __init__(self, servidor: Servidor) -> None:
+        self.servidor = servidor
+
+    async def comprobar_disponibilidad(self) -> bool:
+        return True
+
+    async def ejecutar_comando_controlado(
+        self,
+        comando: str,
+        tiempo_limite_segundos: float,
+        limite_salida_bytes: int,
+    ) -> ResultadoEjecucionRemota:
+        assert comando
+        assert tiempo_limite_segundos > 0
+        assert limite_salida_bytes > 0
+        if self.servidor.sistema_operativo.value == "linux":
+            salida = "HERMES_SO=linux\nLinux\n6.8.0-prueba\nlinux-prueba\n"
+        else:
+            salida = (
+                "HERMES_SO=windows_server\nMicrosoft Windows Server 2022 Standard\n"
+                "10.0.20348\nWINDOWS-PRUEBA\n"
+            )
+        return ResultadoEjecucionRemota(0, salida, "", 0.01)
+
+    async def cerrar(self) -> None:
+        return None
 
 
 @dataclass
@@ -69,6 +101,7 @@ async def contexto_integracion() -> AsyncIterator[ContextoIntegracion]:
         await sesion.commit()
 
     aplicacion = crear_aplicacion(configuracion, motor)
+    aplicacion.state.fabrica_transporte_remoto = TransporteRemotoSimulado
     contexto = ContextoIntegracion(
         motor=motor,
         fabrica_sesiones=fabrica_sesiones,
@@ -188,6 +221,22 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert duplicado.status_code == 409
 
         id_primer_servidor = servidores[0]["id_servidor"]
+
+        conexion_denegada = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/comprobar-conexion",
+            auth=autenticacion_lector,
+        )
+        assert conexion_denegada.status_code == 403
+
+        for servidor in servidores[:2]:
+            conexion = await cliente.post(
+                f"/api/v1/servidores/{servidor['id_servidor']}/comprobar-conexion",
+                auth=autenticacion_admin,
+            )
+            assert conexion.status_code == 200, conexion.text
+            assert conexion.json()["estado"] == "disponible"
+            assert conexion.json()["sistema_detectado"] == servidor["sistema_operativo"]
+
         actualizacion = await cliente.patch(
             f"/api/v1/servidores/{id_primer_servidor}",
             auth=autenticacion_admin,
@@ -258,6 +307,7 @@ async def test_crud_persistente_permisos_y_auditoria(
         acciones = {item["accion"] for item in auditoria.json()}
         assert "crear_servidor" in acciones
         assert "comprobar_permiso" in acciones
+        assert "comprobar_conexion_ssh" in acciones
 
         sin_confirmacion = await cliente.delete(
             f"/api/v1/servidores/{servidores[1]['id_servidor']}",
