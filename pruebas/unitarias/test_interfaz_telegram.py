@@ -101,11 +101,22 @@ def _servidor() -> ServidorResumen:
 
 
 def _resultado(codigo: CodigoAccion) -> ResultadoAccionRespuesta:
-    datos: dict[str, str | int | bool]
+    datos: dict[str, str | int | float | bool | None]
     if codigo is CodigoAccion.OBTENER_IDENTIDAD:
         datos = {"usuario": "operador", "nombre_equipo": "ubuntu-laboratorio"}
     elif codigo is CodigoAccion.CONSULTAR_PROCESO:
         datos = {"id_proceso": 1, "nombre_proceso": "systemd"}
+    elif codigo is CodigoAccion.OBTENER_DIAGNOSTICO:
+        datos = {
+            "estado": "disponible",
+            "cpu_porcentaje": 18.12,
+            "memoria_porcentaje": 42.0,
+            "disco_porcentaje": None,
+            "tiempo_actividad_segundos": 90_061,
+            "sistema": "Linux",
+            "version": "6.8.0-prueba",
+            "nombre_equipo": "ubuntu-laboratorio",
+        }
     else:
         datos = {"reinicio_programado": True, "demora_segundos": 60}
     return ResultadoAccionRespuesta(
@@ -176,6 +187,28 @@ async def test_lista_selecciona_y_ejecuta_identidad(
     datos = gestor.ejecutar_accion.await_args.args[4]
     assert datos.parametros == {}
     assert datos.confirmar is False
+
+
+@pytest.mark.asyncio
+async def test_muestra_diagnostico_uniforme_y_metricas_no_disponibles(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.ejecutar_accion.return_value = _resultado(CodigoAccion.OBTENER_DIAGNOSTICO)
+    mensaje = MensajeSimulado()
+    contexto = _contexto()
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await interfaz.obtener_diagnostico(_actualizacion(mensaje), contexto)
+
+    texto = mensaje.respuestas[-1][0]
+    assert "Estado: Disponible" in texto
+    assert "CPU: 18.12 %" in texto
+    assert "RAM: 42.00 %" in texto
+    assert "Disco: No disponible" in texto
+    assert "Tiempo de actividad: 1 d, 1 h, 1 min" in texto
+    assert gestor.ejecutar_accion.await_args.args[3] == "obtener_diagnostico"
 
 
 @pytest.mark.asyncio

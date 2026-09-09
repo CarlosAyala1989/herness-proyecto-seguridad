@@ -1,11 +1,14 @@
 """Pruebas del catálogo cerrado y comandos de cada plataforma."""
 
+from base64 import b64decode
+
 import pytest
 
 from aplicacion.acciones.errores import (
     ErrorAccionNoAutorizada,
     ErrorEjecucionAccion,
     ErrorParametrosAccion,
+    ErrorRespuestaAccionNoValida,
 )
 from aplicacion.acciones.registro import (
     CodigoAccion,
@@ -68,6 +71,25 @@ def test_linux_y_windows_utilizan_comandos_diferentes() -> None:
     assert linux.comando != windows.comando
 
 
+def test_diagnostico_utiliza_guiones_fijos_especificos_por_plataforma() -> None:
+    parametros = ParametrosSinCampos()
+
+    linux = AdaptadorLinux().preparar_accion(CodigoAccion.OBTENER_DIAGNOSTICO, parametros)
+    windows = AdaptadorWindows().preparar_accion(
+        CodigoAccion.OBTENER_DIAGNOSTICO,
+        parametros,
+    )
+    guion_windows = b64decode(windows.comando.rsplit(maxsplit=1)[1]).decode("utf-16-le")
+
+    assert "/proc/stat" in linux.comando
+    assert "/proc/meminfo" in linux.comando
+    assert "df -Pk /" in linux.comando
+    assert "Get-CimInstance Win32_Processor" in guion_windows
+    assert "Get-CimInstance Win32_OperatingSystem" in guion_windows
+    assert "Get-CimInstance Win32_LogicalDisk" in guion_windows
+    assert linux.comando != windows.comando
+
+
 def test_normaliza_identidad_y_proceso_en_ambas_plataformas() -> None:
     identidad_linux = AdaptadorLinux().interpretar_accion(
         CodigoAccion.OBTENER_IDENTIDAD,
@@ -101,3 +123,72 @@ def test_error_remoto_no_expone_salida_de_error() -> None:
 
     assert captura.value.detalles == [{"codigo_salida": "7"}]
     assert "secreto-que-no-debe-salir" not in captura.value.mensaje
+
+
+@pytest.mark.parametrize("adaptador", [AdaptadorLinux(), AdaptadorWindows()])
+def test_diagnostico_normaliza_metricas_y_campos_no_disponibles(adaptador: object) -> None:
+    salida = (
+        "HERMES_ACCION=obtener_diagnostico\n"
+        "estado=disponible\n"
+        "cpu_porcentaje=18.126\n"
+        "memoria_porcentaje=42\n"
+        "disco_porcentaje=no_disponible\n"
+        "tiempo_actividad_segundos=90061\n"
+        "sistema=Linux\n"
+        "version=6.8.0-prueba\n"
+        "nombre_equipo=servidor-prueba\n"
+    )
+
+    datos = adaptador.interpretar_accion(
+        CodigoAccion.OBTENER_DIAGNOSTICO,
+        _resultado(salida),
+    )
+
+    assert datos == {
+        "estado": "disponible",
+        "cpu_porcentaje": 18.13,
+        "memoria_porcentaje": 42.0,
+        "disco_porcentaje": None,
+        "tiempo_actividad_segundos": 90061,
+        "sistema": "Linux",
+        "version": "6.8.0-prueba",
+        "nombre_equipo": "servidor-prueba",
+    }
+
+
+@pytest.mark.parametrize(
+    "salida",
+    [
+        "HERMES_ACCION=obtener_diagnostico\nestado=disponible\n",
+        (
+            "HERMES_ACCION=obtener_diagnostico\n"
+            "estado=disponible\n"
+            "cpu_porcentaje=101\n"
+            "memoria_porcentaje=42\n"
+            "disco_porcentaje=63\n"
+            "tiempo_actividad_segundos=100\n"
+            "sistema=Linux\n"
+            "version=6.8\n"
+            "nombre_equipo=equipo\n"
+        ),
+        (
+            "HERMES_ACCION=obtener_diagnostico\n"
+            "estado=disponible\n"
+            "cpu_porcentaje=nan\n"
+            "memoria_porcentaje=42\n"
+            "disco_porcentaje=63\n"
+            "tiempo_actividad_segundos=100\n"
+            "sistema=Linux\n"
+            "version=6.8\n"
+            "nombre_equipo=equipo\n"
+        ),
+    ],
+)
+def test_diagnostico_rechaza_respuestas_incompletas_o_fuera_de_rango(
+    salida: str,
+) -> None:
+    with pytest.raises(ErrorRespuestaAccionNoValida):
+        AdaptadorLinux().interpretar_accion(
+            CodigoAccion.OBTENER_DIAGNOSTICO,
+            _resultado(salida),
+        )

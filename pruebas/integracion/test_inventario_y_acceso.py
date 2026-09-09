@@ -48,6 +48,23 @@ class TransporteRemotoSimulado:
             )
         elif "HERMES_ACCION=reiniciar_servidor" in comando:
             salida = "HERMES_ACCION=reiniciar_servidor\nPROGRAMADO\n"
+        elif "/proc/stat" in comando or "-EncodedCommand" in comando:
+            sistema = (
+                "Linux"
+                if self.servidor.sistema_operativo.value == "linux"
+                else "Microsoft Windows Server 2022 Standard"
+            )
+            salida = (
+                "HERMES_ACCION=obtener_diagnostico\n"
+                "estado=disponible\n"
+                "cpu_porcentaje=18.25\n"
+                "memoria_porcentaje=42.50\n"
+                "disco_porcentaje=63\n"
+                "tiempo_actividad_segundos=90061\n"
+                f"sistema={sistema}\n"
+                "version=version-prueba\n"
+                f"nombre_equipo={self.servidor.nombre}\n"
+            )
         elif self.servidor.sistema_operativo.value == "linux":
             salida = "HERMES_SO=linux\nLinux\n6.8.0-prueba\nlinux-prueba\n"
         else:
@@ -254,6 +271,7 @@ async def test_crud_persistente_permisos_y_auditoria(
             "obtener_identidad",
             "consultar_proceso",
             "reiniciar_servidor",
+            "obtener_diagnostico",
         }
         assert acciones_lector.status_code == 200
         assert acciones_lector.json() == []
@@ -274,6 +292,16 @@ async def test_crud_persistente_permisos_y_auditoria(
             assert identidad.status_code == 200, identidad.text
             assert identidad.json()["estado"] == "completada"
             assert identidad.json()["datos"]["usuario"] == "operador_pruebas"
+
+            diagnostico = await cliente.post(
+                f"/api/v1/servidores/{servidor['id_servidor']}/acciones/obtener_diagnostico",
+                auth=autenticacion_admin,
+                json={},
+            )
+            assert diagnostico.status_code == 200, diagnostico.text
+            assert diagnostico.json()["datos"]["estado"] == "disponible"
+            assert diagnostico.json()["datos"]["cpu_porcentaje"] == 18.25
+            assert diagnostico.json()["datos"]["tiempo_actividad_segundos"] == 90_061
 
         parametros_maliciosos = await cliente.post(
             f"/api/v1/servidores/{id_primer_servidor}/acciones/consultar_proceso",
@@ -356,6 +384,7 @@ async def test_crud_persistente_permisos_y_auditoria(
             "gestionar_acceso",
             "consultar_auditoria",
             "comprobar_conexion",
+            "consultar_diagnostico",
         }
 
         rol_auditor = next(item for item in roles.json() if item["nombre"] == "auditor")
@@ -380,6 +409,7 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert "comprobar_permiso" in acciones
         assert "comprobar_conexion_ssh" in acciones
         assert "ejecutar_accion_obtener_identidad" in acciones
+        assert "ejecutar_accion_obtener_diagnostico" in acciones
         assert "ejecutar_accion_reiniciar_servidor" in acciones
 
         sin_confirmacion = await cliente.delete(

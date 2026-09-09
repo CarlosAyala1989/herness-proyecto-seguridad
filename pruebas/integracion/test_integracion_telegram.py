@@ -47,12 +47,26 @@ class TransporteTelegramSimulado:
         tiempo_limite_segundos: float,
         limite_salida_bytes: int,
     ) -> ResultadoEjecucionRemota:
-        assert "HERMES_ACCION=obtener_identidad" in comando
         assert tiempo_limite_segundos > 0
         assert limite_salida_bytes >= 1_024
+        if "/proc/stat" in comando:
+            salida = (
+                "HERMES_ACCION=obtener_diagnostico\n"
+                "estado=disponible\n"
+                "cpu_porcentaje=12.50\n"
+                "memoria_porcentaje=45.25\n"
+                "disco_porcentaje=no_disponible\n"
+                "tiempo_actividad_segundos=3600\n"
+                "sistema=Linux\n"
+                "version=6.8.0-prueba\n"
+                "nombre_equipo=ubuntu-telegram\n"
+            )
+        else:
+            assert "HERMES_ACCION=obtener_identidad" in comando
+            salida = "HERMES_ACCION=obtener_identidad\noperador_telegram\nubuntu-telegram\n"
         return ResultadoEjecucionRemota(
             codigo_salida=0,
-            salida="HERMES_ACCION=obtener_identidad\noperador_telegram\nubuntu-telegram\n",
+            salida=salida,
             error="",
             duracion_segundos=0.02,
         )
@@ -201,10 +215,21 @@ async def test_autoriza_por_identificador_y_reutiliza_motor_comun(
         "nombre_equipo": "ubuntu-telegram",
     }
 
+    diagnostico = await gestor.ejecutar_accion(
+        contexto_telegram_integracion.identificador_autorizado,
+        1004,
+        contexto_telegram_integracion.id_servidor_activo,
+        "obtener_diagnostico",
+        SolicitudEjecucionAccion(),
+    )
+    assert diagnostico.datos["estado"] == "disponible"
+    assert diagnostico.datos["cpu_porcentaje"] == 12.5
+    assert diagnostico.datos["disco_porcentaje"] is None
+
     with pytest.raises(ErrorServidorInactivo):
         await gestor.ejecutar_accion(
             contexto_telegram_integracion.identificador_autorizado,
-            1004,
+            1005,
             contexto_telegram_integracion.id_servidor_inactivo,
             "obtener_identidad",
             SolicitudEjecucionAccion(),
@@ -252,6 +277,15 @@ async def test_permiso_se_comprueba_tambien_antes_de_confirmar(
         assert rol_operador is not None
         usuario.roles = [rol_operador]
         await sesion.commit()
+
+    diagnostico = await contexto_telegram_integracion.gestor.ejecutar_accion(
+        contexto_telegram_integracion.identificador_autorizado,
+        1006,
+        contexto_telegram_integracion.id_servidor_activo,
+        "obtener_diagnostico",
+        SolicitudEjecucionAccion(),
+    )
+    assert diagnostico.datos["estado"] == "disponible"
 
     with pytest.raises(ErrorPermisoDenegado):
         await contexto_telegram_integracion.gestor.comprobar_accion_sensible(
