@@ -7,9 +7,14 @@ from aplicacion.acciones.registro import (
     CodigoAccion,
     ParametrosAccion,
     ParametrosConsultaProceso,
+    ParametrosServicio,
 )
 from aplicacion.adaptadores.acciones import AccionRemotaPreparada
 from aplicacion.adaptadores.diagnostico import interpretar_diagnostico
+from aplicacion.adaptadores.servicios import (
+    ACCIONES_SERVICIO,
+    interpretar_resultado_servicio,
+)
 from aplicacion.adaptadores.sistema_operativo import SistemaRemotoDetectado
 from aplicacion.conexiones.errores import ErrorSistemaOperativoNoCoincide
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
@@ -17,7 +22,7 @@ from aplicacion.modelos.enumeraciones import SistemaOperativo
 
 
 class AdaptadorLinux:
-    """Usa únicamente un saludo fijo, sin parámetros recibidos del usuario."""
+    """Traduce acciones controladas a herramientas estándar de Linux."""
 
     sistema_operativo = SistemaOperativo.LINUX
     comando_deteccion = "printf 'HERMES_SO=linux\\n'; uname -s; uname -r; hostname"
@@ -77,6 +82,73 @@ printf 'version=%s\n' "$version"
 printf 'nombre_equipo=%s\n' "$nombre_equipo"
 """
 
+    @staticmethod
+    def _preparar_servicio(
+        codigo: CodigoAccion,
+        parametros: ParametrosServicio,
+    ) -> AccionRemotaPreparada:
+        nombre = shlex.quote(parametros.nombre_servicio)
+        operaciones = {
+            CodigoAccion.CONSULTAR_SERVICIO: "",
+            CodigoAccion.INICIAR_SERVICIO: "start",
+            CodigoAccion.DETENER_SERVICIO: "stop",
+            CodigoAccion.REINICIAR_SERVICIO: "restart",
+        }
+        operacion = operaciones[codigo]
+        bloque_operacion = ""
+        if operacion:
+            bloque_operacion = f"""
+if [ "$(id -u)" -eq 0 ]; then
+    systemctl {operacion} -- "$nombre_servicio"
+elif command -v sudo >/dev/null 2>&1; then
+    sudo -n systemctl {operacion} -- "$nombre_servicio"
+else
+    exit 126
+fi
+"""
+        guion = f"""
+if ! command -v systemctl >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=gestor_servicios_no_disponible\\n'
+    exit 0
+fi
+nombre_servicio={nombre}
+{bloque_operacion}
+propiedades=$(systemctl show --no-pager --property=LoadState --property=ActiveState --property=UnitFileState -- "$nombre_servicio" 2>/dev/null) || exit $?
+estado_carga=$(printf '%s\\n' "$propiedades" | awk -F= '$1 == "LoadState" {{ print substr($0, index($0, "=") + 1) }}')
+estado_nativo=$(printf '%s\\n' "$propiedades" | awk -F= '$1 == "ActiveState" {{ print substr($0, index($0, "=") + 1) }}')
+estado_inicio=$(printf '%s\\n' "$propiedades" | awk -F= '$1 == "UnitFileState" {{ print substr($0, index($0, "=") + 1) }}')
+
+if [ "$estado_carga" = "not-found" ] || [ -z "$estado_carga" ]; then
+    printf 'HERMES_ERROR=servicio_no_encontrado\\n'
+    exit 0
+fi
+
+case "$estado_nativo" in
+    active) estado=activo ;;
+    inactive) estado=inactivo ;;
+    activating) estado=iniciando ;;
+    deactivating) estado=deteniendo ;;
+    failed) estado=fallido ;;
+    reloading) estado=recargando ;;
+    *) estado=desconocido ;;
+esac
+case "$estado_inicio" in
+    enabled|enabled-runtime) inicio_automatico=true ;;
+    disabled|masked|masked-runtime) inicio_automatico=false ;;
+    *) inicio_automatico=no_disponible ;;
+esac
+
+printf 'HERMES_ACCION={codigo.value}\\n'
+printf 'nombre_servicio=%s\\n' "$nombre_servicio"
+printf 'estado=%s\\n' "$estado"
+printf 'estado_nativo=%s\\n' "$estado_nativo"
+printf 'inicio_automatico=%s\\n' "$inicio_automatico"
+"""
+        return AccionRemotaPreparada(
+            codigo=codigo,
+            comando=f"LC_ALL=C sh -c {shlex.quote(guion)}",
+        )
+
     def interpretar_deteccion(
         self,
         resultado: ResultadoEjecucionRemota,
@@ -119,6 +191,8 @@ printf 'nombre_equipo=%s\n' "$nombre_equipo"
             )
         elif codigo is CodigoAccion.OBTENER_DIAGNOSTICO:
             comando = f"LC_ALL=C sh -c {shlex.quote(self.guion_diagnostico)}"
+        elif codigo in ACCIONES_SERVICIO and isinstance(parametros, ParametrosServicio):
+            return self._preparar_servicio(codigo, parametros)
         else:
             raise ErrorRespuestaAccionNoValida()
         return AccionRemotaPreparada(codigo=codigo, comando=comando)
@@ -132,6 +206,8 @@ printf 'nombre_equipo=%s\n' "$nombre_equipo"
 
         if codigo is CodigoAccion.OBTENER_DIAGNOSTICO:
             return interpretar_diagnostico(resultado)
+        if codigo in ACCIONES_SERVICIO:
+            return interpretar_resultado_servicio(codigo, resultado)
         if resultado.codigo_salida != 0:
             raise ErrorEjecucionAccion(resultado.codigo_salida)
         lineas = [linea.strip() for linea in resultado.salida.splitlines()]

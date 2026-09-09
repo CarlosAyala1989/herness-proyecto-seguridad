@@ -7,9 +7,14 @@ from aplicacion.acciones.registro import (
     CodigoAccion,
     ParametrosAccion,
     ParametrosConsultaProceso,
+    ParametrosServicio,
 )
 from aplicacion.adaptadores.acciones import AccionRemotaPreparada
 from aplicacion.adaptadores.diagnostico import interpretar_diagnostico
+from aplicacion.adaptadores.servicios import (
+    ACCIONES_SERVICIO,
+    interpretar_resultado_servicio,
+)
 from aplicacion.adaptadores.sistema_operativo import SistemaRemotoDetectado
 from aplicacion.conexiones.errores import ErrorSistemaOperativoNoCoincide
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
@@ -86,6 +91,78 @@ Write-Output "nombre_equipo=$nombre_equipo"
 
         return b64encode(guion.encode("utf-16-le")).decode("ascii")
 
+    def _preparar_servicio(
+        self,
+        codigo: CodigoAccion,
+        parametros: ParametrosServicio,
+    ) -> AccionRemotaPreparada:
+        operaciones = {
+            CodigoAccion.CONSULTAR_SERVICIO: "",
+            CodigoAccion.INICIAR_SERVICIO: (
+                "Start-Service -InputObject $servicio -ErrorAction Stop\n"
+                "$servicio.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, "
+                "[TimeSpan]::FromSeconds(8))"
+            ),
+            CodigoAccion.DETENER_SERVICIO: (
+                "Stop-Service -InputObject $servicio -Confirm:$false -ErrorAction Stop\n"
+                "$servicio.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, "
+                "[TimeSpan]::FromSeconds(8))"
+            ),
+            CodigoAccion.REINICIAR_SERVICIO: (
+                "Restart-Service -InputObject $servicio -Confirm:$false -ErrorAction Stop\n"
+                "$servicio.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, "
+                "[TimeSpan]::FromSeconds(8))"
+            ),
+        }
+        operacion = operaciones[codigo]
+        guion = f"""
+$ErrorActionPreference = 'Stop'
+$nombre_servicio = '{parametros.nombre_servicio}'
+if ($null -eq (Get-Command Get-Service -ErrorAction SilentlyContinue)) {{
+    Write-Output 'HERMES_ERROR=gestor_servicios_no_disponible'
+    exit 0
+}}
+$servicio = Get-Service -Name $nombre_servicio -ErrorAction SilentlyContinue
+if ($null -eq $servicio) {{
+    Write-Output 'HERMES_ERROR=servicio_no_encontrado'
+    exit 0
+}}
+{operacion}
+$servicio = Get-Service -Name $nombre_servicio -ErrorAction Stop
+$estado_nativo = [string]$servicio.Status
+$estado = switch ($estado_nativo) {{
+    'Running' {{ 'activo' }}
+    'Stopped' {{ 'inactivo' }}
+    'StartPending' {{ 'iniciando' }}
+    'StopPending' {{ 'deteniendo' }}
+    'Paused' {{ 'pausado' }}
+    'PausePending' {{ 'pausado' }}
+    'ContinuePending' {{ 'iniciando' }}
+    default {{ 'desconocido' }}
+}}
+$inicio_automatico = 'no_disponible'
+try {{
+    $filtro = "Name = '$nombre_servicio'"
+    $servicio_cim = Get-CimInstance Win32_Service -Filter $filtro -ErrorAction Stop
+    if ($null -ne $servicio_cim) {{
+        $inicio_automatico = if ($servicio_cim.StartMode -eq 'Auto') {{ 'true' }} else {{ 'false' }}
+    }}
+}} catch {{}}
+Write-Output 'HERMES_ACCION={codigo.value}'
+Write-Output "nombre_servicio=$nombre_servicio"
+Write-Output "estado=$estado"
+Write-Output "estado_nativo=$estado_nativo"
+Write-Output "inicio_automatico=$inicio_automatico"
+"""
+        guion_codificado = self._codificar_guion_powershell(guion)
+        return AccionRemotaPreparada(
+            codigo=codigo,
+            comando=(
+                "powershell.exe -NoLogo -NoProfile -NonInteractive "
+                f"-EncodedCommand {guion_codificado}"
+            ),
+        )
+
     def interpretar_deteccion(
         self,
         resultado: ResultadoEjecucionRemota,
@@ -144,6 +221,8 @@ Write-Output "nombre_equipo=$nombre_equipo"
                     f"-EncodedCommand {guion_codificado}"
                 ),
             )
+        elif codigo in ACCIONES_SERVICIO and isinstance(parametros, ParametrosServicio):
+            return self._preparar_servicio(codigo, parametros)
         else:
             raise ErrorRespuestaAccionNoValida()
         return AccionRemotaPreparada(codigo=codigo, comando=f'{prefijo}{cuerpo}"')
@@ -157,6 +236,8 @@ Write-Output "nombre_equipo=$nombre_equipo"
 
         if codigo is CodigoAccion.OBTENER_DIAGNOSTICO:
             return interpretar_diagnostico(resultado)
+        if codigo in ACCIONES_SERVICIO:
+            return interpretar_resultado_servicio(codigo, resultado)
         if resultado.codigo_salida != 0:
             raise ErrorEjecucionAccion(resultado.codigo_salida)
         lineas = [linea.strip() for linea in resultado.salida.splitlines()]
