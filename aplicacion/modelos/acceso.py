@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, Boolean, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from aplicacion.modelos.asociaciones import roles_permisos, usuarios_roles
 from aplicacion.modelos.base import FechasRegistro, ModeloBase
+
+if TYPE_CHECKING:
+    from aplicacion.modelos.identidad_mensajeria import IdentidadMensajeria
 
 
 class Permiso(ModeloBase):
@@ -64,5 +69,10 @@ class Usuario(FechasRegistro, ModeloBase):
     roles: Mapped[list[Rol]] = relationship(
         secondary=usuarios_roles,
         back_populates="usuarios",
+        lazy="selectin",
+    )
+    identidades_mensajeria: Mapped[list[IdentidadMensajeria]] = relationship(
+        back_populates="usuario",
+        cascade="all, delete-orphan",
         lazy="selectin",
     )

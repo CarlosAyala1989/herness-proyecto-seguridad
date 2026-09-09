@@ -26,6 +26,13 @@ class CanalAuditoria(StrEnum):
     SLACK = "slack"
 
 
+class TipoCanalMensajeria(StrEnum):
+    """Proveedores que pueden vincular una identidad externa."""
+
+    TELEGRAM = "telegram"
+    SLACK = "slack"
+
+
 class ResultadoAuditoria(StrEnum):
     """Resultado normalizado de una acción auditable."""
 
