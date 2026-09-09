@@ -6,7 +6,7 @@ hitos y actualmente dispone de inventario, seguridad y transporte SSH.
 
 ## Estado actual
 
-Hitos 1, 2 y 3 completados. Hermes 0.3.0 proporciona:
+Hitos 1 a 4 completados. Hermes 0.4.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -23,10 +23,15 @@ Hitos 1, 2 y 3 completados. Hermes 0.3.0 proporciona:
 - autenticación remota exclusivamente por claves o `ssh-agent`;
 - doble verificación de identidad mediante `known_hosts` y huella SHA-256;
 - tiempos de espera, mantenimiento de conexión y salida acotada;
-- detección normalizada mediante adaptadores Linux y Windows Server.
+- detección normalizada mediante adaptadores Linux y Windows Server;
+- catálogo cerrado de acciones remotas, sin ejecución arbitraria;
+- autorización y validación específica por acción;
+- confirmación obligatoria para reinicios;
+- resultados normalizados y auditoría por servidor.
 
-Todavía no se incluyen acciones administrativas ni bots de Telegram o Slack;
-corresponden a los hitos 4, 5 y 9 respectivamente.
+Las acciones disponibles son `obtener_identidad`, `consultar_proceso` y
+`reiniciar_servidor`. Todavía no se incluyen bots, métricas ni administración
+de servicios; corresponden a los hitos 5, 6 y 7.
 
 ## Requisitos locales
 
@@ -108,3 +113,5 @@ conocer los límites entre módulos y
 para usar el inventario y el modelo de acceso. La preparación y comprobación de
 servidores está en
 [`documentacion/conexiones_ssh.md`](documentacion/conexiones_ssh.md).
+El catálogo y sus controles se describen en
+[`documentacion/motor_acciones.md`](documentacion/motor_acciones.md).

@@ -3,8 +3,8 @@
 ## Objetivo actual
 
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
-persistencia y contratos externos. El hito 3 añade el transporte SSH y los
-adaptadores Linux y Windows sin trasladar lógica hacia Telegram o Slack.
+persistencia y contratos externos. El hito 4 añade el catálogo autorizado y la
+orquestación de acciones sin trasladar lógica hacia Telegram o Slack.
 
 ## Componentes actuales
 
@@ -25,7 +25,10 @@ aplicacion/principal.py
        autenticación y permisos                   │
                   │                               │
                   ▼                               │
-       servicios de inventario, acceso, conexiones y auditoría
+       servicios de inventario, acceso, conexiones, acciones y auditoría
+                  │                       │
+                  │                       ▼
+                  │               registro de acciones
                   │                       │
                   │                       ▼
                   │              adaptador Linux/Windows
@@ -54,6 +57,10 @@ aplicacion/principal.py
 - `servicios/gestor_acceso.py` administra usuarios y asignaciones de roles.
 - `servicios/gestor_conexiones.py` selecciona el adaptador registrado, ejecuta
   únicamente su saludo fijo y normaliza el resultado.
+- `acciones/registro.py` es la lista cerrada de operaciones, sus esquemas de
+  parámetros, permisos y requisito de confirmación.
+- `servicios/gestor_acciones.py` aplica la política en orden: catálogo,
+  autorización, inventario, parámetros, confirmación, adaptador, SSH y auditoría.
 - `conexiones/transporte_ssh.py` contiene la conexión AsyncSSH, la doble
   validación de host, los plazos y la recolección acotada de salida.
 - `conexiones/credenciales.py` resuelve referencias de archivo confinadas o el
@@ -89,9 +96,9 @@ ese puerto. Los bots futuros solo traducirán mensajes hacia casos de uso del
 backend. La selección de comandos,
 permisos, confirmaciones y auditoría no residirá en esos bots.
 
-El contrato de transporte no asume Linux. Los adaptadores actuales solo
-verifican la plataforma. Sus operaciones administrativas crecerán en los hitos
-posteriores sin modificar el transporte ni los canales de mensajería.
+El contrato de transporte no asume Linux. Los adaptadores verifican la
+plataforma y traducen cada acción común a su comando fijo. Los canales futuros
+solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
 
 ## Decisiones de seguridad iniciales
 
@@ -114,6 +121,12 @@ posteriores sin modificar el transporte ni los canales de mensajería.
 - La salida estándar y de error comparten un límite máximo; al agotarlo se
   interrumpe el proceso remoto. Conexión, autenticación y ejecución tienen
   plazos independientes.
+- El código de acción se busca en un diccionario inmutable. Un código desconocido
+  obtiene un error controlado y jamás se trata como comando.
+- Cada acción usa un modelo Pydantic con campos adicionales prohibidos. El único
+  parámetro actual es un identificador de proceso entero y acotado.
+- `reiniciar_servidor` exige un permiso exclusivo y confirmación explícita. Se
+  programa con un minuto de margen para evitar una desconexión instantánea.
 - Cada ruta de inventario exige un permiso persistente. Los rechazos de
   autenticación y autorización también generan auditoría cuando existe un
   usuario identificable.
@@ -128,8 +141,8 @@ posteriores sin modificar el transporte ni los canales de mensajería.
 
 Hermes no ejecuta órdenes directamente en su propio proceso. El Ubuntu del
 laboratorio ya se comprobó mediante OpenSSH, autenticación por clave y
-verificación estricta de la clave del host. En el hito 4 las acciones
-serán predefinidas, autorizadas y auditadas. En el hito 5 Telegram identificará
+verificación estricta de la clave del host. Las acciones del hito 4 son
+predefinidas, autorizadas y auditadas. En el hito 5 Telegram identificará
 al usuario principalmente por su identificador numérico inmutable y delegará la
 acción al backend. El número de teléfono no es un dato fiable ni siempre está
 disponible para autorizar bots, por lo que no será el identificador principal.

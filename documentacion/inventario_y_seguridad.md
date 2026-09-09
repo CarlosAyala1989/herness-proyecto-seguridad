@@ -1,8 +1,9 @@
 # Inventario y seguridad
 
-Este documento describe las capacidades incorporadas en el hito 2. Todas las
-rutas funcionales usan el prefijo `/api/v1`, requieren un usuario activo y
-comprueban el permiso correspondiente en MariaDB.
+Este documento describe el inventario y el modelo de acceso incorporados desde
+el hito 2 y ampliados hasta el hito 4. Todas las rutas funcionales usan el
+prefijo `/api/v1`, requieren un usuario activo y comprueban el permiso
+correspondiente en MariaDB.
 
 ## Modelo persistente
 
@@ -23,7 +24,7 @@ servidores ──< servidores_grupos >── grupos_servidores
 - `registros_auditoria` conserva actor, acción, recurso, resultado, canal,
   origen e identificador de solicitud.
 
-La migración `0001` es la fuente de verdad del esquema. Se aplica con:
+Las migraciones versionadas son la fuente de verdad del esquema. Se aplican con:
 
 ```bash
 alembic -c alembic.ini upgrade head
@@ -51,10 +52,14 @@ La migración registra estos permisos:
 | `gestionar_acceso` | Administrar usuarios y asignaciones de roles. |
 | `consultar_auditoria` | Consultar el historial de auditoría. |
 | `comprobar_conexion` | Comprobar SSH y plataforma mediante saludos fijos. |
+| `ejecutar_acciones_lectura` | Ejecutar acciones remotas predefinidas de solo lectura. |
+| `reiniciar_servidor` | Programar el reinicio confirmado de un servidor. |
 
 Los roles iniciales son `administrador`, `operador_inventario` y `auditor`. El
 administrador reúne todos los permisos; el operador puede consultar y gestionar
-el inventario; el auditor solo puede consultar inventario y auditoría.
+el inventario, comprobar conexiones y ejecutar las acciones de lectura; el
+auditor solo puede consultar inventario y auditoría. Únicamente el administrador
+inicial recibe el permiso de reinicio.
 
 El primer administrador se crea mediante el comando interactivo documentado en
 `instalacion_local.md`. Hermes impide retirar el último rol administrador activo
@@ -79,6 +84,8 @@ para no dejar el sistema sin una vía de administración.
 | `GET /api/v1/permisos` | `gestionar_acceso` | Consultar permisos. |
 | `GET /api/v1/auditoria` | `consultar_auditoria` | Consultar registros recientes. |
 | `POST /api/v1/servidores/{id_servidor}/comprobar-conexion` | `comprobar_conexion` | Verificar identidad, autenticación y plataforma. |
+| `GET /api/v1/acciones` | Según cada acción | Mostrar solo las acciones permitidas al usuario. |
+| `POST /api/v1/servidores/{id_servidor}/acciones/{codigo_accion}` | Según la acción | Validar, ejecutar, normalizar y auditar una acción registrada. |
 
 Las colecciones aceptan `desplazamiento` y `limite`; el límite por página es
 100, pero no existe un máximo fijo de servidores almacenados.
@@ -114,8 +121,9 @@ curl --user administrador_local --request POST \
   http://127.0.0.1:8000/api/v1/servidores/1/comprobar-conexion
 ```
 
-Esta ruta solo ejecuta el saludo interno del adaptador. Antes del hito 5 todavía
-no existe un bot de Telegram.
+Esta ruta solo ejecuta el saludo interno del adaptador. Las acciones del hito 4
+se documentan en `motor_acciones.md`. Antes del hito 5 todavía no existe un bot
+de Telegram.
 
 ## Comportamiento de seguridad
 

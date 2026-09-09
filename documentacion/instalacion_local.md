@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1, 2 y 3 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 4 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -102,10 +102,11 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0002 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0003 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
+La tercera incorpora permisos separados para lectura remota y reinicio.
 
 ## 5. Crear el primer administrador
 
@@ -162,7 +163,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -180,6 +181,17 @@ ejemplo, este comando solicita la contraseña sin dejarla en el historial:
 
 ```bash
 curl --user administrador_local http://127.0.0.1:8000/api/v1/servidores
+```
+
+Consulta las acciones disponibles y ejecuta una operación de lectura:
+
+```bash
+curl --user administrador_local http://127.0.0.1:8000/api/v1/acciones
+
+curl --user administrador_local \
+  --header 'Content-Type: application/json' \
+  --data '{}' \
+  http://127.0.0.1:8000/api/v1/servidores/1/acciones/obtener_identidad
 ```
 
 No inicies el backend con `--host 0.0.0.0`: HTTP Basic debe quedar limitado a
@@ -212,11 +224,12 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 3 conecta mediante SSH, comprueba identidad y autenticación, y verifica
-si el servidor responde como Linux o Windows Server. Solo ejecuta saludos de
-detección definidos internamente. El registro de acciones administrativas
-llegará en el hito 4 y Telegram en el hito 5.
+El hito 4 ejecuta un catálogo pequeño de acciones predefinidas, comprueba el
+permiso específico, valida parámetros, normaliza resultados y audita cada
+servidor. Telegram llegará en el hito 5; métricas y servicios se incorporarán
+en los hitos 6 y 7.
 
 Por ello todavía no debe intentarse administrar el Ubuntu anfitrión desde
-Telegram. La conexión SSH local ya puede comprobarse desde el backend, pero no
-existe aún una operación para iniciar, detener o modificar recursos del equipo.
+Telegram. Las acciones de lectura ya funcionan desde el backend. El reinicio
+requiere el permiso `reiniciar_servidor` y `confirmar: true`; no debe probarse
+sobre el anfitrión salvo que el reinicio haya sido planificado expresamente.
