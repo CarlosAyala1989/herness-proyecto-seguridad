@@ -5,7 +5,8 @@
 La base separa configuración, transporte HTTP, autenticación, casos de uso,
 persistencia y contratos externos. Telegram y Slack usan los mismos servicios
 de diagnóstico, inventario, autorización, SSH y auditoría. El orquestador
-múltiple y el monitor añaden concurrencia acotada sin cambiar esos límites.
+múltiple, el monitor y el programador añaden concurrencia acotada sin cambiar
+esos límites.
 
 ## Componentes actuales
 
@@ -31,6 +32,8 @@ Slack ─────► interfaz/slack ─────┘                │
 El proceso `aplicacion.monitoreo` entra directamente por servicios internos,
 sin simular un usuario de Telegram, Slack o HTTP. Ejecuta únicamente acciones
 de lectura del catálogo y registra las transiciones con canal `sistema`.
+El proceso `aplicacion.tareas` reclama definiciones vencidas en MariaDB,
+reautoriza al creador y entra por el mismo motor múltiple con canal `sistema`.
 
 - `configuracion.py` carga y valida variables de entorno. Las contraseñas se
   representan con `SecretStr` y la URL se construye con `SQLAlchemy.URL` para
@@ -72,6 +75,12 @@ de lectura del catálogo y registra las transiciones con canal `sistema`.
 - `monitoreo/notificaciones.py` materializa una entrega por suscripción,
   reintenta fallos y adapta Telegram o Slack sin conocer SSH.
 - `monitoreo/motor.py` limita la concurrencia y aísla el fallo de cada destino.
+- `servicios/gestor_tareas.py` valida y congela una selección antes de crear la
+  definición, y ofrece consulta y cancelación auditadas.
+- `tareas/motor.py` reclama ocurrencias mediante actualización condicional,
+  evita repeticiones por restricción única y delega en el motor común.
+- `tareas/notificaciones.py` entrega resúmenes persistentes a las identidades
+  activas del creador reutilizando los adaptadores Telegram y Slack.
 - `conexiones/transporte_ssh.py` contiene la conexión AsyncSSH, la doble
   validación de host, los plazos y la recolección acotada de salida.
 - `conexiones/credenciales.py` resuelve referencias de archivo confinadas o el
@@ -195,6 +204,12 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   Cada intento queda persistido y se detiene al alcanzar el máximo configurado.
 - Los destinos de alerta deben ser identidades activas, pertenecer a usuarios
   activos y contar con una suscripción explícita habilitada por un administrador.
+- Una tarea almacena IDs de servidores resueltos, no un grupo dinámico; esto
+  evita ampliar los objetivos después de confirmar una operación sensible.
+- El trabajador revalida usuario, permisos, acción y parámetros antes de SSH.
+  Cada ocurrencia tiene clave única y bloqueo temporal; una ocurrencia
+  interrumpida no se reintenta automáticamente para evitar duplicar una orden
+  remota cuyo resultado haya quedado ambiguo.
 
 ## Administración futura del Ubuntu anfitrión
 

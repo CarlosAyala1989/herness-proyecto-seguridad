@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 a 10 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 11 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -118,7 +118,7 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0007 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0008 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
@@ -129,6 +129,8 @@ La sexta separa la consulta de servicios de las operaciones que cambian su
 estado.
 La séptima incorpora configuraciones de monitoreo, servicios críticos, alertas,
 suscripciones, entregas y permisos de consulta y administración.
+La octava añade tareas programadas, ocurrencias idempotentes, entregas de
+resultados y permisos de consulta y administración.
 
 ## 5. Crear el primer administrador
 
@@ -190,7 +192,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -353,7 +355,21 @@ Este proceso necesita MariaDB y acceso SSH, pero no requiere mantener FastAPI,
 Telegram o Slack Bolt ejecutándose. Usa directamente los tokens configurados
 para las entregas salientes.
 
-## 11. Ejecutar comprobaciones
+## 11. Activar tareas programadas
+
+Crea y consulta definiciones mediante la API siguiendo
+`documentacion/tareas_programadas.md`. Ejecuta primero una sola vuelta segura:
+
+```bash
+source .venv/bin/activate
+python -m aplicacion.tareas --una-vez
+```
+
+Para mantener el calendario activo, configura sus límites en `.env` e inicia
+`python -m aplicacion.tareas` en una terminal dedicada. FastAPI no ejecuta el
+calendario dentro del proceso web.
+
+## 12. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -376,15 +392,15 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 10 añade políticas persistentes por servidor, sondeos concurrentes,
-episodios deduplicados, recuperación y entregas reintentables. El proceso
-reutiliza inventario, adaptadores, SSH y MariaDB sin convertir los canales de
-mensajería en backends independientes.
+El hito 11 añade tareas de fecha única o intervalo fijo, historial de
+ejecuciones, cancelación y entregas opcionales de resultados. El trabajador
+reutiliza inventario, permisos, motor de acciones, adaptadores, SSH y MariaDB
+sin convertir los canales de mensajería en backends independientes.
 
 Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
 un usuario vinculado y servidores activos. El reinicio requiere permiso y una
 confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
 planificado expresamente. Las mutaciones de servicios también exigen permiso,
-confirmación y privilegios remotos limitados. El monitoreo automático y las
-alertas ya están disponibles. La programación persistente de tareas
-administrativas corresponde al hito 11.
+confirmación y privilegios remotos limitados. El monitoreo automático, las
+alertas y la programación persistente ya están disponibles. La administración
+de cuentas del sistema corresponde al hito 12.
