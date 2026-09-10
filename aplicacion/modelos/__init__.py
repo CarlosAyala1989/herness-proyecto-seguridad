@@ -13,6 +13,11 @@ from aplicacion.modelos.monitoreo import (
 )
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
+from aplicacion.modelos.tarea_programada import (
+    EjecucionTarea,
+    NotificacionTarea,
+    TareaProgramada,
+)
 
 __all__ = [
     "GrupoServidor",
@@ -28,4 +33,7 @@ __all__ = [
     "Rol",
     "Servidor",
     "Usuario",
+    "TareaProgramada",
+    "EjecucionTarea",
+    "NotificacionTarea",
 ]

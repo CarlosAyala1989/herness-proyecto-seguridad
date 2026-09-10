@@ -51,6 +51,7 @@ class TipoRecursoAuditoria(StrEnum):
     PERMISO = "permiso"
     ASOCIACION = "asociacion"
     AUTENTICACION = "autenticacion"
+    TAREA = "tarea"
 
 
 class TipoAlerta(StrEnum):
@@ -84,3 +85,36 @@ class EstadoNotificacionAlerta(StrEnum):
     ENVIADA = "enviada"
     FALLIDA = "fallida"
     OMITIDA = "omitida"
+
+
+class TipoProgramacionTarea(StrEnum):
+    """Modalidades temporales admitidas por el programador persistente."""
+
+    UNA_VEZ = "una_vez"
+    INTERVALO = "intervalo"
+
+
+class EstadoTareaProgramada(StrEnum):
+    """Ciclo de vida de una definición de tarea."""
+
+    ACTIVA = "activa"
+    CANCELADA = "cancelada"
+    COMPLETADA = "completada"
+
+
+class EstadoEjecucionTarea(StrEnum):
+    """Resultado durable de una ocurrencia programada."""
+
+    EN_EJECUCION = "en_ejecucion"
+    COMPLETADA = "completada"
+    COMPLETADA_CON_ERRORES = "completada_con_errores"
+    FALLIDA = "fallida"
+    INTERRUMPIDA = "interrumpida"
+
+
+class EstadoNotificacionTarea(StrEnum):
+    """Resultado de una entrega asociada a una ejecución."""
+
+    PENDIENTE = "pendiente"
+    ENVIADA = "enviada"
+    FALLIDA = "fallida"

@@ -65,6 +65,13 @@ class Configuracion(BaseSettings):
     tiempo_limite_sondeo_segundos: float = Field(default=45.0, gt=0, le=600)
     max_intentos_notificacion_alerta: int = Field(default=3, ge=1, le=10)
 
+    tareas_habilitadas: bool = False
+    intervalo_revision_tareas_segundos: float = Field(default=15.0, ge=1, le=3_600)
+    duracion_bloqueo_tarea_segundos: int = Field(default=600, ge=60, le=3_600)
+    max_tareas_por_ciclo: int = Field(default=20, ge=1, le=100)
+    max_concurrencia_tareas: int = Field(default=2, ge=1, le=16)
+    max_intentos_notificacion_tarea: int = Field(default=3, ge=1, le=10)
+
     @model_validator(mode="after")
     def validar_configuracion_telegram(self) -> "Configuracion":
         """Exige un token no vacío únicamente cuando Telegram está habilitado."""
