@@ -1,6 +1,8 @@
 """Pruebas de Slack Bolt sin abrir conexiones con Slack."""
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,6 +17,7 @@ from aplicacion.esquemas.acciones import (
     ResultadoServidorAccionMultiple,
     SeleccionServidores,
 )
+from aplicacion.esquemas.archivos import DescargaArchivo, InformacionArchivoRespuesta
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.slack.bot import InterfazSlack, crear_aplicacion_slack
 from aplicacion.modelos.enumeraciones import SistemaOperativo
@@ -131,6 +134,48 @@ def _resultado_multiple(codigo: CodigoAccion) -> ResultadoAccionMultipleRespuest
             ),
         ],
     )
+
+
+@pytest.mark.asyncio
+async def test_slack_consulta_y_entrega_archivo_en_mensaje_directo(
+    interfaz: tuple[InterfazSlack, AsyncMock],
+) -> None:
+    adaptador, gestor = interfaz
+    gestor.consultar_servidor.return_value = _servidor()
+    gestor.consultar_informacion_archivo.return_value = InformacionArchivoRespuesta(
+        id_servidor=7,
+        nombre_servidor="ubuntu-laboratorio",
+        ruta_remota="/srv/hermes/intercambio/prueba.bin",
+        nombre_archivo="prueba.bin",
+        tipo="archivo",
+        tamano_bytes=4,
+        modificado_en=datetime.now(UTC),
+    )
+    gestor.descargar_archivo.return_value = DescargaArchivo(
+        "prueba.bin", b"dato", "/srv/hermes/intercambio/prueba.bin"
+    )
+    cliente_slack = SimpleNamespace(files_upload_v2=AsyncMock())
+    adaptador._aplicacion = SimpleNamespace(client=cliente_slack)  # type: ignore[assignment]
+    respuestas = RespuestasSlack()
+
+    await adaptador.recibir_comando(
+        RespuestasSlack(), _comando("seleccionar 7"), respuestas
+    )
+    await adaptador.recibir_comando(
+        RespuestasSlack(),
+        _comando("archivo_info /srv/hermes/intercambio/prueba.bin"),
+        respuestas,
+    )
+    await adaptador.recibir_comando(
+        RespuestasSlack(),
+        _comando("descargar_archivo /srv/hermes/intercambio/prueba.bin"),
+        respuestas,
+    )
+
+    assert "Tamaño: 4 bytes" in respuestas.llamadas[-2]["text"]
+    cliente_slack.files_upload_v2.assert_awaited_once()
+    assert cliente_slack.files_upload_v2.await_args.kwargs["content"] == b"dato"
+    assert "se envió" in respuestas.llamadas[-1]["text"]
 
 
 @pytest.fixture

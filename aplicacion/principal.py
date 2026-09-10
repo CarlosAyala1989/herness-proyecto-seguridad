@@ -16,6 +16,7 @@ from aplicacion.errores import registrar_manejadores_errores
 from aplicacion.registro_logs import configurar_logs
 from aplicacion.rutas.acceso import enrutador as enrutador_acceso
 from aplicacion.rutas.acciones import enrutador as enrutador_acciones
+from aplicacion.rutas.archivos import enrutador as enrutador_archivos
 from aplicacion.rutas.auditoria import enrutador as enrutador_auditoria
 from aplicacion.rutas.conexiones import enrutador as enrutador_conexiones
 from aplicacion.rutas.inventario import enrutador as enrutador_inventario
@@ -96,6 +97,7 @@ def crear_aplicacion(
     aplicacion.include_router(enrutador_conexiones)
     aplicacion.include_router(enrutador_monitoreo)
     aplicacion.include_router(enrutador_tareas)
+    aplicacion.include_router(enrutador_archivos)
     return aplicacion
 
 

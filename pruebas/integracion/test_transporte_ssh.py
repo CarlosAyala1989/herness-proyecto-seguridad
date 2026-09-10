@@ -1,6 +1,7 @@
 """Pruebas reales del cliente AsyncSSH contra un servidor efímero local."""
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from aplicacion.conexiones.errores import (
 )
 from aplicacion.conexiones.transporte_ssh import TransporteSSHAsync
 from aplicacion.configuracion import Configuracion
+from aplicacion.errores import ErrorConflictoDatos, ErrorRutaRemotaNoPermitida
 from aplicacion.modelos.enumeraciones import SistemaOperativo, TipoCredencialConexion
 from aplicacion.modelos.servidor import Servidor
 
@@ -30,6 +32,7 @@ class LaboratorioSSH:
     clave_cliente: Path
     hosts_conocidos: Path
     huella_host: str
+    raiz_sftp: Path
 
 
 async def _atender_proceso(proceso: asyncssh.SSHServerProcess[bytes]) -> None:
@@ -56,6 +59,8 @@ async def _crear_laboratorio_ssh(tmp_path: Path) -> AsyncIterator[LaboratorioSSH
     ruta_cliente = tmp_path / "clave_cliente"
     ruta_autorizadas = tmp_path / "claves_autorizadas"
     ruta_hosts = tmp_path / "hosts_conocidos"
+    raiz_sftp = tmp_path / "raiz_sftp"
+    (raiz_sftp / "intercambio").mkdir(parents=True)
     ruta_host.write_bytes(clave_host.export_private_key())
     ruta_cliente.write_bytes(clave_cliente.export_private_key())
     ruta_autorizadas.write_bytes(clave_cliente.export_public_key())
@@ -68,6 +73,9 @@ async def _crear_laboratorio_ssh(tmp_path: Path) -> AsyncIterator[LaboratorioSSH
         server_host_keys=[str(ruta_host)],
         authorized_client_keys=str(ruta_autorizadas),
         process_factory=_atender_proceso,
+        sftp_factory=lambda canal: asyncssh.SFTPServer(
+            canal, chroot=os.fsencode(raiz_sftp)
+        ),
         encoding=None,
     )
     puerto = servidor.get_port()
@@ -83,6 +91,7 @@ async def _crear_laboratorio_ssh(tmp_path: Path) -> AsyncIterator[LaboratorioSSH
             clave_cliente=ruta_cliente,
             hosts_conocidos=ruta_hosts,
             huella_host=clave_host.get_fingerprint("sha256"),
+            raiz_sftp=raiz_sftp,
         )
     finally:
         servidor.close()
@@ -208,3 +217,66 @@ async def test_interrumpe_salida_y_tiempo_excedidos(
                 limite_salida_bytes=1_024,
             )
         await transporte.cerrar()
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
+    tmp_path: Path,
+    configuracion_pruebas: Configuracion,
+) -> None:
+    async with _crear_laboratorio_ssh(tmp_path) as laboratorio:
+        transporte = TransporteSSHAsync(
+            _crear_servidor(laboratorio),
+            _crear_configuracion(configuracion_pruebas, laboratorio),
+        )
+        reemplazado = await transporte.cargar_archivo(
+            "/intercambio/prueba.txt",
+            b"contenido seguro de prueba",
+            ("/intercambio",),
+            2,
+            4_096,
+            False,
+        )
+        informacion = await transporte.consultar_informacion_archivo(
+            "/intercambio/prueba.txt", ("/intercambio",), 2
+        )
+        informacion_descarga, contenido = await transporte.descargar_archivo(
+            "/intercambio/prueba.txt",
+            ("/intercambio",),
+            2,
+            1_024,
+            4_096,
+        )
+        with pytest.raises(ErrorConflictoDatos):
+            await transporte.cargar_archivo(
+                "/intercambio/prueba.txt",
+                b"otro contenido",
+                ("/intercambio",),
+                2,
+                4_096,
+                False,
+            )
+        reemplazado_confirmado = await transporte.cargar_archivo(
+            "/intercambio/prueba.txt",
+            b"contenido reemplazado",
+            ("/intercambio",),
+            2,
+            4_096,
+            True,
+        )
+        with pytest.raises(ErrorRutaRemotaNoPermitida):
+            await transporte.consultar_informacion_archivo(
+                "/fuera.txt", ("/intercambio",), 2
+            )
+        await transporte.cerrar()
+
+    assert reemplazado is False
+    assert reemplazado_confirmado is True
+    assert informacion.tipo == "archivo"
+    assert informacion.tamano_bytes == len(b"contenido seguro de prueba")
+    assert informacion_descarga.nombre_archivo == "prueba.txt"
+    assert contenido == b"contenido seguro de prueba"
+    assert (laboratorio.raiz_sftp / "intercambio" / "prueba.txt").read_bytes() == (
+        b"contenido reemplazado"
+    )

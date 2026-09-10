@@ -3,7 +3,9 @@
 import asyncio
 import hmac
 import os
+import posixpath
 import stat
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from types import TracebackType
@@ -20,8 +22,20 @@ from aplicacion.conexiones.errores import (
     ErrorTiempoEsperaSSH,
 )
 from aplicacion.configuracion import Configuracion
-from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
+from aplicacion.errores import (
+    ErrorArchivoRemotoNoCompatible,
+    ErrorConflictoDatos,
+    ErrorHermes,
+    ErrorLimiteArchivoExcedido,
+    ErrorRecursoNoEncontrado,
+    ErrorRutaRemotaNoPermitida,
+)
+from aplicacion.interfaces.transporte_remoto import (
+    InformacionArchivoRemoto,
+    ResultadoEjecucionRemota,
+)
 from aplicacion.modelos.servidor import Servidor
+from aplicacion.seguridad.rutas_remotas import ruta_esta_contenida
 
 TAMANO_MAXIMO_HOSTS_CONOCIDOS = 2_097_152
 TAMANO_BLOQUE_LECTURA = 4_096
@@ -148,6 +162,222 @@ class TransporteSSHAsync:
         conexion, self._conexion = self._conexion, None
         conexion.close()
         await conexion.wait_closed()
+
+    async def consultar_informacion_archivo(
+        self,
+        ruta_remota: str,
+        rutas_permitidas: tuple[str, ...],
+        tiempo_limite_segundos: float,
+    ) -> InformacionArchivoRemoto:
+        """Consulta un archivo SFTP únicamente tras resolver su ruta real."""
+
+        try:
+            async with asyncio.timeout(tiempo_limite_segundos):
+                conexion = await self._conectar()
+                async with conexion.start_sftp_client() as cliente:
+                    ruta_canonica = await self._resolver_ruta_existente_autorizada(
+                        cliente, ruta_remota, rutas_permitidas
+                    )
+                    atributos = await cliente.stat(ruta_canonica)
+                    return self._crear_informacion_archivo(ruta_canonica, atributos)
+        except TimeoutError:
+            raise ErrorTiempoEsperaSSH() from None
+        except ErrorHermes:
+            raise
+        except asyncssh.SFTPNoSuchFile:
+            raise ErrorRecursoNoEncontrado("archivo remoto") from None
+        except asyncssh.SFTPPermissionDenied:
+            raise ErrorArchivoRemotoNoCompatible(
+                "El servidor rechazó el acceso al archivo remoto."
+            ) from None
+        except (asyncssh.Error, OSError):
+            raise ErrorServidorSSHNoDisponible() from None
+
+    async def descargar_archivo(
+        self,
+        ruta_remota: str,
+        rutas_permitidas: tuple[str, ...],
+        tiempo_limite_segundos: float,
+        limite_bytes: int,
+        tamano_bloque_bytes: int,
+    ) -> tuple[InformacionArchivoRemoto, bytes]:
+        """Lee un archivo regular por bloques sin superar el límite global."""
+
+        try:
+            async with asyncio.timeout(tiempo_limite_segundos):
+                conexion = await self._conectar()
+                async with conexion.start_sftp_client() as cliente:
+                    ruta_canonica = await self._resolver_ruta_existente_autorizada(
+                        cliente, ruta_remota, rutas_permitidas
+                    )
+                    atributos = await cliente.stat(ruta_canonica)
+                    informacion = self._crear_informacion_archivo(ruta_canonica, atributos)
+                    if informacion.tipo != "archivo":
+                        raise ErrorArchivoRemotoNoCompatible(
+                            "Solo se permite descargar archivos regulares."
+                        )
+                    if informacion.tamano_bytes is None or informacion.tamano_bytes > limite_bytes:
+                        raise ErrorLimiteArchivoExcedido(limite_bytes)
+
+                    contenido = bytearray()
+                    async with cliente.open(ruta_canonica, "rb") as archivo:
+                        while True:
+                            bloque = await archivo.read(tamano_bloque_bytes)
+                            if not bloque:
+                                break
+                            contenido.extend(bloque)
+                            if len(contenido) > limite_bytes:
+                                raise ErrorLimiteArchivoExcedido(limite_bytes)
+                    return informacion, bytes(contenido)
+        except TimeoutError:
+            raise ErrorTiempoEsperaSSH() from None
+        except ErrorHermes:
+            raise
+        except asyncssh.SFTPNoSuchFile:
+            raise ErrorRecursoNoEncontrado("archivo remoto") from None
+        except asyncssh.SFTPPermissionDenied:
+            raise ErrorArchivoRemotoNoCompatible(
+                "El servidor rechazó la lectura del archivo remoto."
+            ) from None
+        except (asyncssh.Error, OSError):
+            raise ErrorServidorSSHNoDisponible() from None
+
+    async def cargar_archivo(
+        self,
+        ruta_remota: str,
+        contenido: bytes,
+        rutas_permitidas: tuple[str, ...],
+        tiempo_limite_segundos: float,
+        tamano_bloque_bytes: int,
+        sobrescribir: bool,
+    ) -> bool:
+        """Escribe por SFTP usando creación exclusiva salvo confirmación de reemplazo."""
+
+        try:
+            async with asyncio.timeout(tiempo_limite_segundos):
+                conexion = await self._conectar()
+                async with conexion.start_sftp_client() as cliente:
+                    ruta_canonica = await self._resolver_destino_autorizado(
+                        cliente, ruta_remota, rutas_permitidas
+                    )
+                    existia = False
+                    try:
+                        atributos = await cliente.lstat(ruta_canonica)
+                        existia = True
+                        if atributos.type == asyncssh.FILEXFER_TYPE_SYMLINK:
+                            raise ErrorArchivoRemotoNoCompatible(
+                                "No se permite cargar sobre un enlace simbólico."
+                            )
+                        if atributos.type != asyncssh.FILEXFER_TYPE_REGULAR:
+                            raise ErrorArchivoRemotoNoCompatible(
+                                "El destino existente no es un archivo regular."
+                            )
+                    except asyncssh.SFTPNoSuchFile:
+                        pass
+                    if existia and not sobrescribir:
+                        raise ErrorConflictoDatos(
+                            "El archivo remoto ya existe; confirme la sobrescritura para reemplazarlo."
+                        )
+
+                    modo = "wb" if sobrescribir else "xb"
+                    async with cliente.open(ruta_canonica, modo) as archivo:
+                        for inicio in range(0, len(contenido), tamano_bloque_bytes):
+                            await archivo.write(contenido[inicio : inicio + tamano_bloque_bytes])
+                    return existia
+        except TimeoutError:
+            raise ErrorTiempoEsperaSSH() from None
+        except ErrorHermes:
+            raise
+        except asyncssh.SFTPFileAlreadyExists:
+            raise ErrorConflictoDatos(
+                "El archivo remoto ya existe; confirme la sobrescritura para reemplazarlo."
+            ) from None
+        except asyncssh.SFTPNoSuchFile:
+            raise ErrorRecursoNoEncontrado("directorio remoto de destino") from None
+        except asyncssh.SFTPPermissionDenied:
+            raise ErrorArchivoRemotoNoCompatible(
+                "El servidor rechazó la escritura del archivo remoto."
+            ) from None
+        except (asyncssh.Error, OSError):
+            raise ErrorServidorSSHNoDisponible() from None
+
+    async def _resolver_ruta_existente_autorizada(
+        self,
+        cliente: asyncssh.SFTPClient,
+        ruta_remota: str,
+        rutas_permitidas: tuple[str, ...],
+    ) -> str:
+        ruta_canonica = str(await cliente.realpath(ruta_remota))
+        raices_canonicas = await self._resolver_raices_canonicas(cliente, rutas_permitidas)
+        self._exigir_contencion_canonica(ruta_canonica, raices_canonicas)
+        return ruta_canonica
+
+    async def _resolver_destino_autorizado(
+        self,
+        cliente: asyncssh.SFTPClient,
+        ruta_remota: str,
+        rutas_permitidas: tuple[str, ...],
+    ) -> str:
+        padre, nombre = posixpath.split(ruta_remota.replace("\\", "/"))
+        if not nombre or nombre in {".", ".."}:
+            raise ErrorArchivoRemotoNoCompatible("La ruta de destino debe identificar un archivo.")
+        padre_canonico = str(await cliente.realpath(padre))
+        destino_canonico = posixpath.join(padre_canonico.rstrip("/"), nombre)
+        raices_canonicas = await self._resolver_raices_canonicas(cliente, rutas_permitidas)
+        self._exigir_contencion_canonica(destino_canonico, raices_canonicas)
+        return destino_canonico
+
+    async def _resolver_raices_canonicas(
+        self,
+        cliente: asyncssh.SFTPClient,
+        rutas_permitidas: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        if not rutas_permitidas:
+            raise ErrorRutaRemotaNoPermitida()
+        raices: list[str] = []
+        for ruta in rutas_permitidas:
+            canonica = str(await cliente.realpath(ruta))
+            atributos = await cliente.stat(canonica)
+            if atributos.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+                continue
+            raices.append(canonica)
+        if not raices:
+            raise ErrorRutaRemotaNoPermitida()
+        return tuple(raices)
+
+    def _exigir_contencion_canonica(
+        self,
+        ruta_canonica: str,
+        raices_canonicas: tuple[str, ...],
+    ) -> None:
+        if not any(
+            ruta_esta_contenida(ruta_canonica, raiz, self._servidor.sistema_operativo)
+            for raiz in raices_canonicas
+        ):
+            raise ErrorRutaRemotaNoPermitida()
+
+    @staticmethod
+    def _crear_informacion_archivo(
+        ruta_canonica: str,
+        atributos: asyncssh.SFTPAttrs,
+    ) -> InformacionArchivoRemoto:
+        tipos = {
+            asyncssh.FILEXFER_TYPE_REGULAR: "archivo",
+            asyncssh.FILEXFER_TYPE_DIRECTORY: "directorio",
+            asyncssh.FILEXFER_TYPE_SYMLINK: "enlace_simbolico",
+        }
+        modificado = (
+            datetime.fromtimestamp(atributos.mtime, tz=UTC)
+            if atributos.mtime is not None
+            else None
+        )
+        return InformacionArchivoRemoto(
+            ruta_remota=ruta_canonica,
+            nombre_archivo=posixpath.basename(ruta_canonica.rstrip("/")) or ruta_canonica,
+            tipo=tipos.get(atributos.type, "otro"),
+            tamano_bytes=atributos.size,
+            modificado_en=modificado,
+        )
 
     async def _conectar(self) -> asyncssh.SSHClientConnection:
         if self._conexion is not None and not self._conexion.is_closed():

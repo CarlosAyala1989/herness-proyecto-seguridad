@@ -12,10 +12,16 @@ from aplicacion.esquemas.acciones import (
     SolicitudEjecucionAccion,
     SolicitudEjecucionMultiple,
 )
+from aplicacion.esquemas.archivos import (
+    CargaArchivoRespuesta,
+    DescargaArchivo,
+    InformacionArchivoRespuesta,
+)
 from aplicacion.esquemas.inventario import GrupoDetalle, ServidorResumen
 from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import CanalAuditoria, TipoCanalMensajeria
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
+from aplicacion.servicios import gestor_archivos
 from aplicacion.servicios.auditoria import ContextoAuditoria
 from aplicacion.servicios.gestor_acciones import (
     comprobar_permisos_adicionales_accion,
@@ -314,3 +320,79 @@ class GestorMensajeria:
                 ids_servidores=[objetivo.id_servidor for objetivo in objetivos]
             )
             return seleccion_fijada, len(objetivos)
+
+    async def consultar_informacion_archivo(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_servidor: int,
+        ruta_remota: str,
+    ) -> InformacionArchivoRespuesta:
+        """Autoriza y delega una consulta SFTP al backend común."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(
+                sesion, None, usuario, "consultar_archivos", contexto
+            )
+            return await gestor_archivos.consultar_informacion_archivo(
+                sesion,
+                id_servidor,
+                ruta_remota,
+                usuario,
+                self._fabrica_transporte,
+                self._configuracion,
+                contexto=contexto,
+            )
+
+    async def descargar_archivo(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_servidor: int,
+        ruta_remota: str,
+    ) -> DescargaArchivo:
+        """Autoriza una descarga y conserva el canal en auditoría."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(
+                sesion, None, usuario, "descargar_archivos", contexto
+            )
+            return await gestor_archivos.descargar_archivo(
+                sesion,
+                id_servidor,
+                ruta_remota,
+                usuario,
+                self._fabrica_transporte,
+                self._configuracion,
+                contexto=contexto,
+            )
+
+    async def cargar_archivo(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_servidor: int,
+        ruta_remota: str,
+        contenido: bytes,
+    ) -> CargaArchivoRespuesta:
+        """Carga con creación exclusiva; mensajería nunca sobrescribe implícitamente."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(sesion, None, usuario, "cargar_archivos", contexto)
+            return await gestor_archivos.cargar_archivo(
+                sesion,
+                id_servidor,
+                ruta_remota,
+                contenido,
+                False,
+                usuario,
+                self._fabrica_transporte,
+                self._configuracion,
+                contexto=contexto,
+            )

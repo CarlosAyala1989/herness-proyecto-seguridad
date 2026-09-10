@@ -5,6 +5,7 @@ import secrets
 from collections import deque
 from dataclasses import dataclass
 from hmac import compare_digest
+from io import BytesIO
 from time import monotonic
 
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -82,6 +83,9 @@ COMANDOS_TELEGRAM = (
     BotCommand("bloquear_usuario", "Bloquear una cuenta con confirmación"),
     BotCommand("desbloquear_usuario", "Habilitar una cuenta con confirmación"),
     BotCommand("eliminar_usuario", "Eliminar una cuenta con confirmación"),
+    BotCommand("archivo_info", "Consultar información de un archivo remoto"),
+    BotCommand("descargar_archivo", "Descargar un archivo remoto permitido"),
+    BotCommand("cargar_archivo", "Cargar el documento respondido sin sobrescribir"),
     BotCommand("identidad", "Consultar identidad del servidor seleccionado"),
     BotCommand("proceso", "Consultar un proceso por identificador"),
     BotCommand("reiniciar", "Solicitar un reinicio con confirmación"),
@@ -132,6 +136,9 @@ class InterfazTelegram(CanalMensajeria):
             CommandHandler("desbloquear_usuario", self.desbloquear_usuario_sistema)
         )
         aplicacion.add_handler(CommandHandler("eliminar_usuario", self.eliminar_usuario_sistema))
+        aplicacion.add_handler(CommandHandler("archivo_info", self.consultar_archivo))
+        aplicacion.add_handler(CommandHandler("descargar_archivo", self.descargar_archivo))
+        aplicacion.add_handler(CommandHandler("cargar_archivo", self.cargar_archivo))
         aplicacion.add_handler(CommandHandler("identidad", self.obtener_identidad))
         aplicacion.add_handler(CommandHandler("proceso", self.consultar_proceso))
         aplicacion.add_handler(CommandHandler("reiniciar", self.solicitar_reinicio))
@@ -275,6 +282,9 @@ class InterfazTelegram(CanalMensajeria):
             "/bloquear_usuario <cuenta> — bloquear con confirmación\n"
             "/desbloquear_usuario <cuenta> — habilitar con confirmación\n"
             "/eliminar_usuario <cuenta> — eliminar con confirmación\n"
+            "/archivo_info <ruta> — consultar un archivo remoto permitido\n"
+            "/descargar_archivo <ruta> — recibir un archivo remoto\n"
+            "/cargar_archivo <ruta> — responder a un documento para cargarlo\n"
             "/identidad — consultar usuario remoto y equipo\n"
             "/proceso <id> — consultar un proceso\n"
             "/reiniciar — solicitar un reinicio confirmado\n"
@@ -394,6 +404,149 @@ class InterfazTelegram(CanalMensajeria):
         if isinstance(id_servidor, int) and not isinstance(id_servidor, bool):
             return SeleccionServidores(ids_servidores=[id_servidor])
         return None
+
+    async def _preparar_operacion_archivo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> tuple[tuple[int, int, str], int] | None:
+        """Exige un único servidor porque una transferencia produce un archivo."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return None
+        seleccion = self._obtener_seleccion(contexto)
+        ids = seleccion.ids_servidores if seleccion is not None else None
+        if ids is None or len(ids) != 1:
+            await self._responder(
+                actualizacion,
+                "Selecciona un único servidor antes de administrar archivos.",
+            )
+            return None
+        return acceso, ids[0]
+
+    async def consultar_archivo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Muestra metadatos SFTP sin descargar contenido."""
+
+        preparado = await self._preparar_operacion_archivo(actualizacion, contexto)
+        if preparado is None:
+            return
+        ruta = " ".join(contexto.args).strip()
+        if not ruta:
+            await self._responder(actualizacion, "Uso correcto: /archivo_info <ruta>.")
+            return
+        acceso, id_servidor = preparado
+        try:
+            informacion = await self._gestor.consultar_informacion_archivo(
+                acceso[0], acceso[1], id_servidor, ruta
+            )
+        except ErrorHermes as error:
+            await self._responder(actualizacion, f"No fue posible consultar el archivo: {error.mensaje}")
+            return
+        modificado = (
+            informacion.modificado_en.isoformat()
+            if informacion.modificado_en is not None
+            else "No disponible"
+        )
+        tamano = (
+            str(informacion.tamano_bytes)
+            if informacion.tamano_bytes is not None
+            else "No disponible"
+        )
+        await self._responder(
+            actualizacion,
+            f"Servidor: {informacion.nombre_servidor}\n"
+            f"Archivo: {informacion.nombre_archivo}\n"
+            f"Tipo: {informacion.tipo}\n"
+            f"Tamaño: {tamano} bytes\n"
+            f"Modificado: {modificado}",
+        )
+
+    async def descargar_archivo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Entrega como documento un archivo remoto previamente autorizado."""
+
+        preparado = await self._preparar_operacion_archivo(actualizacion, contexto)
+        if preparado is None:
+            return
+        ruta = " ".join(contexto.args).strip()
+        if not ruta:
+            await self._responder(actualizacion, "Uso correcto: /descargar_archivo <ruta>.")
+            return
+        acceso, id_servidor = preparado
+        try:
+            descarga = await self._gestor.descargar_archivo(
+                acceso[0], acceso[1], id_servidor, ruta
+            )
+        except ErrorHermes as error:
+            await self._responder(actualizacion, f"No fue posible descargar el archivo: {error.mensaje}")
+            return
+        mensaje = actualizacion.effective_message
+        if mensaje is None:
+            return
+        flujo = BytesIO(descarga.contenido)
+        flujo.name = descarga.nombre_archivo
+        await mensaje.reply_document(
+            document=flujo,
+            filename=descarga.nombre_archivo,
+            caption="Archivo descargado de forma segura por Hermes.",
+        )
+
+    async def cargar_archivo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Carga el documento respondido usando siempre creación exclusiva."""
+
+        preparado = await self._preparar_operacion_archivo(actualizacion, contexto)
+        if preparado is None:
+            return
+        ruta = " ".join(contexto.args).strip()
+        mensaje = actualizacion.effective_message
+        documento = (
+            mensaje.reply_to_message.document
+            if mensaje is not None and mensaje.reply_to_message is not None
+            else None
+        )
+        if not ruta or documento is None:
+            await self._responder(
+                actualizacion,
+                "Responde a un documento con: /cargar_archivo <ruta_remota>.",
+            )
+            return
+        limite = self._configuracion.limite_archivo_transferencia_bytes
+        if documento.file_size is None or documento.file_size > limite:
+            await self._responder(
+                actualizacion,
+                f"El documento debe informar un tamaño no mayor que {limite} bytes.",
+            )
+            return
+        acceso, id_servidor = preparado
+        try:
+            archivo_telegram = await documento.get_file()
+            contenido = bytes(await archivo_telegram.download_as_bytearray())
+            if len(contenido) > limite:
+                await self._responder(actualizacion, "El documento supera el límite permitido.")
+                return
+            resultado = await self._gestor.cargar_archivo(
+                acceso[0], acceso[1], id_servidor, ruta, contenido
+            )
+        except ErrorHermes as error:
+            await self._responder(actualizacion, f"No fue posible cargar el archivo: {error.mensaje}")
+            return
+        await self._responder(
+            actualizacion,
+            f"Archivo cargado en {resultado.nombre_servidor}: "
+            f"{resultado.tamano_bytes} bytes. No se sobrescribió ningún archivo.",
+        )
 
     async def _seleccionar(
         self,

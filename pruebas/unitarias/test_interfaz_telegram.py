@@ -1,6 +1,7 @@
 """Pruebas de la interfaz Telegram sin conectarse a Telegram."""
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,6 +17,11 @@ from aplicacion.esquemas.acciones import (
     ResultadoAccionRespuesta,
     ResultadoServidorAccionMultiple,
     SeleccionServidores,
+)
+from aplicacion.esquemas.archivos import (
+    CargaArchivoRespuesta,
+    DescargaArchivo,
+    InformacionArchivoRespuesta,
 )
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.telegram.bot import (
@@ -34,9 +40,39 @@ class MensajeSimulado:
     """Captura respuestas sin usar la red de Telegram."""
 
     respuestas: list[tuple[str, object | None]] = field(default_factory=list)
+    documentos: list[tuple[bytes, str]] = field(default_factory=list)
+    reply_to_message: object | None = None
 
     async def reply_text(self, texto: str, reply_markup: object | None = None) -> None:
         self.respuestas.append((texto, reply_markup))
+
+    async def reply_document(
+        self,
+        document: object,
+        filename: str,
+        caption: str,
+    ) -> None:
+        self.documentos.append((document.read(), filename))
+
+
+@dataclass
+class ArchivoTelegramSimulado:
+    contenido: bytes
+
+    async def download_as_bytearray(self) -> bytearray:
+        return bytearray(self.contenido)
+
+
+@dataclass
+class DocumentoTelegramSimulado:
+    contenido: bytes
+
+    @property
+    def file_size(self) -> int:
+        return len(self.contenido)
+
+    async def get_file(self) -> ArchivoTelegramSimulado:
+        return ArchivoTelegramSimulado(self.contenido)
 
 
 @dataclass
@@ -209,6 +245,57 @@ def _resultado_multiple(codigo: CodigoAccion) -> ResultadoAccionMultipleRespuest
                 duracion_ms=13,
             ),
         ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_consulta_descarga_y_carga_archivo_sin_sobrescribir(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.consultar_informacion_archivo.return_value = InformacionArchivoRespuesta(
+        id_servidor=7,
+        nombre_servidor="ubuntu-laboratorio",
+        ruta_remota="/srv/hermes/intercambio/prueba.txt",
+        nombre_archivo="prueba.txt",
+        tipo="archivo",
+        tamano_bytes=9,
+        modificado_en=datetime.now(UTC),
+    )
+    gestor.descargar_archivo.return_value = DescargaArchivo(
+        "prueba.txt", b"contenido", "/srv/hermes/intercambio/prueba.txt"
+    )
+    gestor.cargar_archivo.return_value = CargaArchivoRespuesta(
+        id_servidor=7,
+        nombre_servidor="ubuntu-laboratorio",
+        ruta_remota="/srv/hermes/intercambio/nuevo.txt",
+        tamano_bytes=5,
+        sobrescrito=False,
+    )
+    mensaje = MensajeSimulado()
+    contexto = _contexto("/srv/hermes/intercambio/prueba.txt")
+    contexto.user_data[CLAVE_SELECCION_SERVIDORES] = SeleccionServidores(ids_servidores=[7])
+    actualizacion = _actualizacion(mensaje)
+
+    await interfaz.consultar_archivo(actualizacion, contexto)
+    await interfaz.descargar_archivo(actualizacion, contexto)
+
+    mensaje.reply_to_message = SimpleNamespace(
+        document=DocumentoTelegramSimulado(b"nuevo")
+    )
+    contexto.args = ["/srv/hermes/intercambio/nuevo.txt"]
+    await interfaz.cargar_archivo(actualizacion, contexto)
+
+    assert "Tamaño: 9 bytes" in mensaje.respuestas[0][0]
+    assert mensaje.documentos == [(b"contenido", "prueba.txt")]
+    assert "No se sobrescribió" in mensaje.respuestas[-1][0]
+    gestor.cargar_archivo.assert_awaited_once_with(
+        123_456,
+        900,
+        7,
+        "/srv/hermes/intercambio/nuevo.txt",
+        b"nuevo",
     )
 
 

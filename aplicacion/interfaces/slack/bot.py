@@ -239,7 +239,8 @@ class InterfazSlack(CanalMensajeria):
             "reiniciar_servicio <nombre> · usuarios · crear_usuario <cuenta> [nombre]\n"
             "agregar_grupo <cuenta> <grupo> · quitar_grupo <cuenta> <grupo> · "
             "bloquear_usuario <cuenta> · desbloquear_usuario <cuenta> · "
-            "eliminar_usuario <cuenta> · reiniciar · cancelar"
+            "eliminar_usuario <cuenta> · archivo_info <ruta> · "
+            "descargar_archivo <ruta> · reiniciar · cancelar"
         )
 
     async def recibir_comando(
@@ -310,6 +311,10 @@ class InterfazSlack(CanalMensajeria):
                 SolicitudEjecucionAccion(),
                 responder,
             )
+        elif subcomando == "archivo_info":
+            await self._consultar_archivo(argumentos, solicitud, estado, responder)
+        elif subcomando == "descargar_archivo":
+            await self._descargar_archivo(argumentos, solicitud, estado, responder)
         elif subcomando == "crear_usuario":
             await self._crear_usuario_sistema(argumentos, solicitud, estado, responder)
         elif subcomando in {"agregar_grupo", "quitar_grupo"}:
@@ -367,6 +372,82 @@ class InterfazSlack(CanalMensajeria):
                 responder,
                 "Subcomando no reconocido o parámetros incorrectos. Usa `/hermes ayuda`.",
             )
+
+    @staticmethod
+    def _id_servidor_archivos(estado: EstadoUsuarioSlack) -> int | None:
+        seleccion = estado.seleccion
+        ids = seleccion.ids_servidores if seleccion is not None else None
+        return ids[0] if ids is not None and len(ids) == 1 else None
+
+    async def _consultar_archivo(
+        self,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        ruta = " ".join(argumentos).strip()
+        id_servidor = self._id_servidor_archivos(estado)
+        if id_servidor is None:
+            await self._responder(responder, "Selecciona un único servidor para administrar archivos.")
+            return
+        if not ruta:
+            await self._responder(responder, "Uso correcto: `/hermes archivo_info <ruta>`.")
+            return
+        try:
+            informacion = await self._gestor.consultar_informacion_archivo(
+                solicitud.identidad_externa,
+                solicitud.identificador_solicitud,
+                id_servidor,
+                ruta,
+            )
+        except ErrorHermes as error:
+            await self._responder(responder, f"No fue posible consultar el archivo: {error.mensaje}")
+            return
+        await self._responder(
+            responder,
+            f"Servidor: {informacion.nombre_servidor}\n"
+            f"Archivo: {informacion.nombre_archivo}\n"
+            f"Tipo: {informacion.tipo}\n"
+            f"Tamaño: {informacion.tamano_bytes if informacion.tamano_bytes is not None else 'No disponible'} bytes",
+        )
+
+    async def _descargar_archivo(
+        self,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        ruta = " ".join(argumentos).strip()
+        id_servidor = self._id_servidor_archivos(estado)
+        if id_servidor is None:
+            await self._responder(responder, "Selecciona un único servidor para administrar archivos.")
+            return
+        if not ruta:
+            await self._responder(responder, "Uso correcto: `/hermes descargar_archivo <ruta>`.")
+            return
+        if self._aplicacion is None:
+            await self._responder(responder, "La entrega de archivos de Slack no está inicializada.")
+            return
+        try:
+            descarga = await self._gestor.descargar_archivo(
+                solicitud.identidad_externa,
+                solicitud.identificador_solicitud,
+                id_servidor,
+                ruta,
+            )
+        except ErrorHermes as error:
+            await self._responder(responder, f"No fue posible descargar el archivo: {error.mensaje}")
+            return
+        await self._aplicacion.client.files_upload_v2(
+            channel=solicitud.identificador_canal,
+            filename=descarga.nombre_archivo,
+            content=descarga.contenido,
+            title=descarga.nombre_archivo,
+            initial_comment="Archivo descargado de forma segura por Hermes.",
+        )
+        await self._responder(responder, "El archivo se envió en esta conversación directa.")
 
     async def _mostrar_servidores(
         self,
