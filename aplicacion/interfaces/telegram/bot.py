@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from hmac import compare_digest
 from io import BytesIO
 from time import monotonic
+from typing import Literal
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -29,6 +31,7 @@ from aplicacion.esquemas.acciones import (
     SolicitudEjecucionAccion,
     SolicitudEjecucionMultiple,
 )
+from aplicacion.esquemas.despliegues import SolicitudDespliegue
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.canal_mensajeria import CanalMensajeria
 from aplicacion.interfaces.formateo_usuarios import (
@@ -42,6 +45,7 @@ registrador = logging.getLogger(__name__)
 CLAVE_SERVIDOR_SELECCIONADO = "id_servidor_seleccionado"
 CLAVE_SELECCION_SERVIDORES = "seleccion_servidores"
 CLAVE_CONFIRMACION_ACCION = "confirmacion_accion"
+CLAVE_CONFIRMACION_DESPLIEGUE = "confirmacion_despliegue"
 # Alias interno conservado para consumidores del hito anterior.
 CLAVE_CONFIRMACION_REINICIO = CLAVE_CONFIRMACION_ACCION
 LIMITE_MENSAJE_TELEGRAM = 4_000
@@ -58,6 +62,18 @@ class ConfirmacionAccionSensible:
     seleccion: SeleccionServidores
     codigo_accion: str
     solicitud: SolicitudEjecucionAccion
+    codigo_aleatorio: str
+    vence_en: float
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmacionDespliegue:
+    """Desafío ligado a una instalación o reversión ya autorizada."""
+
+    operacion: Literal["desplegar", "revertir"]
+    id_aplicacion: int
+    id_despliegue: int | None
+    solicitud: SolicitudDespliegue | None
     codigo_aleatorio: str
     vence_en: float
 
@@ -86,6 +102,10 @@ COMANDOS_TELEGRAM = (
     BotCommand("archivo_info", "Consultar información de un archivo remoto"),
     BotCommand("descargar_archivo", "Descargar un archivo remoto permitido"),
     BotCommand("cargar_archivo", "Cargar el documento respondido sin sobrescribir"),
+    BotCommand("aplicaciones", "Listar aplicaciones administradas"),
+    BotCommand("estado_aplicacion", "Consultar una aplicación administrada"),
+    BotCommand("desplegar", "Instalar una versión con confirmación"),
+    BotCommand("revertir_despliegue", "Restaurar una versión con confirmación"),
     BotCommand("identidad", "Consultar identidad del servidor seleccionado"),
     BotCommand("proceso", "Consultar un proceso por identificador"),
     BotCommand("reiniciar", "Solicitar un reinicio con confirmación"),
@@ -139,6 +159,14 @@ class InterfazTelegram(CanalMensajeria):
         aplicacion.add_handler(CommandHandler("archivo_info", self.consultar_archivo))
         aplicacion.add_handler(CommandHandler("descargar_archivo", self.descargar_archivo))
         aplicacion.add_handler(CommandHandler("cargar_archivo", self.cargar_archivo))
+        aplicacion.add_handler(CommandHandler("aplicaciones", self.mostrar_aplicaciones))
+        aplicacion.add_handler(
+            CommandHandler("estado_aplicacion", self.consultar_estado_aplicacion)
+        )
+        aplicacion.add_handler(CommandHandler("desplegar", self.solicitar_despliegue))
+        aplicacion.add_handler(
+            CommandHandler("revertir_despliegue", self.solicitar_reversion_despliegue)
+        )
         aplicacion.add_handler(CommandHandler("identidad", self.obtener_identidad))
         aplicacion.add_handler(CommandHandler("proceso", self.consultar_proceso))
         aplicacion.add_handler(CommandHandler("reiniciar", self.solicitar_reinicio))
@@ -159,6 +187,12 @@ class InterfazTelegram(CanalMensajeria):
             CallbackQueryHandler(
                 self.resolver_accion_sensible,
                 pattern=r"^accion:(confirmar|cancelar):[A-Za-z0-9_-]{8,32}$",
+            )
+        )
+        aplicacion.add_handler(
+            CallbackQueryHandler(
+                self.resolver_confirmacion_despliegue,
+                pattern=r"^despliegue:(confirmar|cancelar):[A-Za-z0-9_-]{8,32}$",
             )
         )
         aplicacion.add_handler(MessageHandler(filters.COMMAND, self.comando_desconocido))
@@ -285,6 +319,10 @@ class InterfazTelegram(CanalMensajeria):
             "/archivo_info <ruta> — consultar un archivo remoto permitido\n"
             "/descargar_archivo <ruta> — recibir un archivo remoto\n"
             "/cargar_archivo <ruta> — responder a un documento para cargarlo\n"
+            "/aplicaciones — listar aplicaciones administradas\n"
+            "/estado_aplicacion <id> — consultar versión y estado operativo\n"
+            "/desplegar <id> <versión> <ruta> — instalar con confirmación\n"
+            "/revertir_despliegue <id_app> <id_despliegue> — restaurar con confirmación\n"
             "/identidad — consultar usuario remoto y equipo\n"
             "/proceso <id> — consultar un proceso\n"
             "/reiniciar — solicitar un reinicio confirmado\n"
@@ -394,6 +432,7 @@ class InterfazTelegram(CanalMensajeria):
         else:
             contexto.user_data.pop(CLAVE_SERVIDOR_SELECCIONADO, None)
         contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
+        contexto.user_data.pop(CLAVE_CONFIRMACION_DESPLIEGUE, None)
 
     @staticmethod
     def _obtener_seleccion(contexto: CallbackContext) -> SeleccionServidores | None:
@@ -551,6 +590,273 @@ class InterfazTelegram(CanalMensajeria):
             f"Archivo cargado en {resultado.nombre_servidor}: "
             f"{resultado.tamano_bytes} bytes. No se sobrescribió ningún archivo.",
         )
+
+    async def mostrar_aplicaciones(
+        self,
+        actualizacion: Update,
+        _: CallbackContext,
+    ) -> None:
+        """Lista instancias administradas sin exponer rutas ni respaldos."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        try:
+            aplicaciones = await self._gestor.consultar_aplicaciones(acceso[0], acceso[1])
+        except ErrorHermes as error:
+            await self._responder(
+                actualizacion, f"No fue posible consultar aplicaciones: {error.mensaje}"
+            )
+            return
+        if not aplicaciones:
+            await self._responder(actualizacion, "No hay aplicaciones administradas registradas.")
+            return
+        lineas = ["Aplicaciones administradas:"]
+        for aplicacion in aplicaciones:
+            version = aplicacion.version_actual or "sin despliegue"
+            lineas.append(
+                f"{aplicacion.id_aplicacion_administrada} · {aplicacion.nombre} · "
+                f"servidor {aplicacion.id_servidor} · {version}"
+            )
+        await self._responder(actualizacion, "\n".join(lineas))
+
+    async def consultar_estado_aplicacion(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Muestra el estado normalizado del archivo y servicio opcional."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        id_aplicacion = (
+            self._convertir_entero_acotado(contexto.args[0], MAX_ID_SERVIDOR)
+            if len(contexto.args) == 1
+            else None
+        )
+        if id_aplicacion is None:
+            await self._responder(
+                actualizacion, "Uso correcto: /estado_aplicacion <id_aplicacion>."
+            )
+            return
+        try:
+            estado = await self._gestor.consultar_estado_aplicacion(
+                acceso[0], acceso[1], id_aplicacion
+            )
+        except ErrorHermes as error:
+            await self._responder(
+                actualizacion, f"No fue posible consultar la aplicación: {error.mensaje}"
+            )
+            return
+        integridad = (
+            "verificada"
+            if estado.integridad_verificada is True
+            else "incorrecta"
+            if estado.integridad_verificada is False
+            else "sin referencia"
+        )
+        servicio = (
+            f"{estado.servicio}: {estado.estado_servicio}"
+            if estado.servicio is not None
+            else "no asociado"
+        )
+        await self._responder(
+            actualizacion,
+            f"Aplicación: {estado.nombre_aplicacion}\n"
+            f"Servidor: {estado.nombre_servidor}\n"
+            f"Sistema: {estado.sistema_operativo.value}\n"
+            f"Versión: {estado.version_actual or 'sin despliegue'}\n"
+            f"Estado: {estado.estado}\n"
+            f"Integridad: {integridad}\n"
+            f"Servicio: {servicio}",
+        )
+
+    async def solicitar_despliegue(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Valida una versión y solicita confirmación de un solo uso."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        id_aplicacion = (
+            self._convertir_entero_acotado(contexto.args[0], MAX_ID_SERVIDOR)
+            if len(contexto.args) >= 3
+            else None
+        )
+        if id_aplicacion is None:
+            await self._responder(
+                actualizacion,
+                "Uso correcto: /desplegar <id_aplicacion> <version> <ruta_artefacto>.",
+            )
+            return
+        try:
+            datos = SolicitudDespliegue(
+                version=contexto.args[1],
+                ruta_artefacto=" ".join(contexto.args[2:]),
+            )
+            aplicacion = await self._gestor.comprobar_despliegue(
+                acceso[0], acceso[1], id_aplicacion, datos
+            )
+        except ValidationError:
+            await self._responder(actualizacion, "La versión o ruta del artefacto no es válida.")
+            return
+        except ErrorHermes as error:
+            await self._responder(
+                actualizacion, f"No se puede solicitar el despliegue: {error.mensaje}"
+            )
+            return
+        await self._crear_confirmacion_despliegue(
+            actualizacion,
+            contexto,
+            ConfirmacionDespliegue(
+                operacion="desplegar",
+                id_aplicacion=id_aplicacion,
+                id_despliegue=None,
+                solicitud=datos,
+                codigo_aleatorio=secrets.token_urlsafe(9),
+                vence_en=monotonic() + self._configuracion.tiempo_confirmacion_telegram_segundos,
+            ),
+            f"instalar la versión {datos.version} de {aplicacion.nombre}",
+        )
+
+    async def solicitar_reversion_despliegue(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Comprueba el historial vigente antes de mostrar la confirmación."""
+
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        ids = (
+            [self._convertir_entero_acotado(valor, MAX_ID_SERVIDOR) for valor in contexto.args]
+            if len(contexto.args) == 2
+            else []
+        )
+        if len(ids) != 2 or any(identificador is None for identificador in ids):
+            await self._responder(
+                actualizacion,
+                "Uso correcto: /revertir_despliegue <id_aplicacion> <id_despliegue>.",
+            )
+            return
+        id_aplicacion, id_despliegue = ids
+        if id_aplicacion is None or id_despliegue is None:
+            return
+        try:
+            aplicacion = await self._gestor.comprobar_reversion_despliegue(
+                acceso[0], acceso[1], id_aplicacion, id_despliegue
+            )
+        except ErrorHermes as error:
+            await self._responder(
+                actualizacion, f"No se puede solicitar la reversión: {error.mensaje}"
+            )
+            return
+        await self._crear_confirmacion_despliegue(
+            actualizacion,
+            contexto,
+            ConfirmacionDespliegue(
+                operacion="revertir",
+                id_aplicacion=id_aplicacion,
+                id_despliegue=id_despliegue,
+                solicitud=None,
+                codigo_aleatorio=secrets.token_urlsafe(9),
+                vence_en=monotonic() + self._configuracion.tiempo_confirmacion_telegram_segundos,
+            ),
+            f"restaurar la versión anterior de {aplicacion.nombre}",
+        )
+
+    async def _crear_confirmacion_despliegue(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+        confirmacion: ConfirmacionDespliegue,
+        descripcion: str,
+    ) -> None:
+        contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
+        contexto.user_data[CLAVE_CONFIRMACION_DESPLIEGUE] = confirmacion
+        teclado = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Confirmar",
+                        callback_data=(f"despliegue:confirmar:{confirmacion.codigo_aleatorio}"),
+                    ),
+                    InlineKeyboardButton(
+                        "Cancelar",
+                        callback_data=(f"despliegue:cancelar:{confirmacion.codigo_aleatorio}"),
+                    ),
+                ]
+            ]
+        )
+        await self._responder(
+            actualizacion,
+            f"¿Confirmas {descripcion}? La confirmación caduca pronto.",
+            teclado,
+        )
+
+    async def resolver_confirmacion_despliegue(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Consume el desafío y ejecuta una única operación ligada."""
+
+        consulta = actualizacion.callback_query
+        if consulta is None or not isinstance(consulta.data, str):
+            return
+        await consulta.answer()
+        acceso = await self._autorizar(actualizacion)
+        if acceso is None:
+            return
+        _, decision, codigo = consulta.data.split(":", maxsplit=2)
+        pendiente = contexto.user_data.pop(CLAVE_CONFIRMACION_DESPLIEGUE, None)
+        if (
+            not isinstance(pendiente, ConfirmacionDespliegue)
+            or monotonic() > pendiente.vence_en
+            or not compare_digest(codigo, pendiente.codigo_aleatorio)
+        ):
+            await self._responder(actualizacion, "La confirmación no es válida o ha caducado.")
+            return
+        if decision == "cancelar":
+            await self._responder(actualizacion, "Operación cancelada.")
+            return
+        try:
+            if pendiente.operacion == "desplegar" and pendiente.solicitud is not None:
+                resultado = await self._gestor.desplegar_aplicacion(
+                    acceso[0],
+                    acceso[1],
+                    pendiente.id_aplicacion,
+                    pendiente.solicitud.model_copy(update={"confirmar": True}),
+                )
+                texto = (
+                    f"Despliegue completado. Aplicación {resultado.id_aplicacion_administrada}, "
+                    f"versión {resultado.version}."
+                )
+            elif pendiente.operacion == "revertir" and pendiente.id_despliegue is not None:
+                resultado = await self._gestor.revertir_despliegue(
+                    acceso[0],
+                    acceso[1],
+                    pendiente.id_aplicacion,
+                    pendiente.id_despliegue,
+                )
+                texto = (
+                    f"Reversión completada. La aplicación {resultado.id_aplicacion_administrada} "
+                    f"restauró la versión {resultado.version_anterior or 'inicial'}."
+                )
+            else:
+                await self._responder(
+                    actualizacion, "La confirmación no contiene una operación válida."
+                )
+                return
+        except ErrorHermes as error:
+            await self._responder(actualizacion, f"La operación no se completó: {error.mensaje}")
+            return
+        await self._responder(actualizacion, texto)
 
     async def _seleccionar(
         self,
@@ -1414,10 +1720,11 @@ class InterfazTelegram(CanalMensajeria):
 
         if await self._autorizar(actualizacion) is None:
             return
-        pendiente = contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
+        pendiente_accion = contexto.user_data.pop(CLAVE_CONFIRMACION_ACCION, None)
+        pendiente_despliegue = contexto.user_data.pop(CLAVE_CONFIRMACION_DESPLIEGUE, None)
         texto = (
             "Confirmación cancelada."
-            if pendiente is not None
+            if pendiente_accion is not None or pendiente_despliegue is not None
             else "No hay confirmaciones pendientes."
         )
         await self._responder(actualizacion, texto)

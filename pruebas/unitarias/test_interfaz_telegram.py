@@ -23,6 +23,11 @@ from aplicacion.esquemas.archivos import (
     DescargaArchivo,
     InformacionArchivoRespuesta,
 )
+from aplicacion.esquemas.despliegues import (
+    AplicacionAdministradaRespuesta,
+    DespliegueAplicacionRespuesta,
+    EstadoAplicacionRespuesta,
+)
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.telegram.bot import (
     CLAVE_CONFIRMACION_REINICIO,
@@ -31,7 +36,7 @@ from aplicacion.interfaces.telegram.bot import (
     InterfazTelegram,
     crear_aplicacion_telegram,
 )
-from aplicacion.modelos.enumeraciones import SistemaOperativo
+from aplicacion.modelos.enumeraciones import EstadoDespliegue, SistemaOperativo
 from aplicacion.servicios.gestor_telegram import GestorTelegram
 
 
@@ -246,6 +251,109 @@ def _resultado_multiple(codigo: CodigoAccion) -> ResultadoAccionMultipleRespuest
             ),
         ],
     )
+
+
+def _aplicacion_administrada() -> AplicacionAdministradaRespuesta:
+    ahora = datetime.now(UTC)
+    return AplicacionAdministradaRespuesta(
+        id_aplicacion_administrada=12,
+        id_servidor=7,
+        id_plantilla_despliegue=4,
+        nombre="api-hermes",
+        descripcion="Aplicación del laboratorio",
+        version_actual="1.0.0",
+        activo=True,
+        creado_en=ahora,
+        actualizado_en=ahora,
+    )
+
+
+def _despliegue(
+    estado: EstadoDespliegue,
+    *,
+    version: str,
+    version_anterior: str | None,
+) -> DespliegueAplicacionRespuesta:
+    ahora = datetime.now(UTC)
+    return DespliegueAplicacionRespuesta(
+        id_despliegue_aplicacion=41,
+        id_aplicacion_administrada=12,
+        nombre_usuario="administrador",
+        version=version,
+        version_anterior=version_anterior,
+        hash_sha256="a" * 64,
+        estado=estado,
+        detalle_resultado="Operación completada.",
+        iniciado_en=ahora,
+        finalizado_en=ahora,
+        revertido_en=ahora if estado is EstadoDespliegue.REVERTIDO else None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_consulta_despliega_y_revierte_aplicacion_con_confirmacion(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.consultar_aplicaciones.return_value = [_aplicacion_administrada()]
+    gestor.consultar_estado_aplicacion.return_value = EstadoAplicacionRespuesta(
+        id_aplicacion_administrada=12,
+        nombre_aplicacion="api-hermes",
+        nombre_servidor="ubuntu-laboratorio",
+        sistema_operativo=SistemaOperativo.LINUX,
+        version_actual="1.0.0",
+        estado="operativa",
+        archivo_disponible=True,
+        integridad_verificada=True,
+        servicio="api-hermes.service",
+        estado_servicio="activo",
+    )
+    gestor.comprobar_despliegue.return_value = _aplicacion_administrada()
+    gestor.desplegar_aplicacion.return_value = _despliegue(
+        EstadoDespliegue.COMPLETADO,
+        version="2.0.0",
+        version_anterior="1.0.0",
+    )
+    gestor.comprobar_reversion_despliegue.return_value = _aplicacion_administrada()
+    gestor.revertir_despliegue.return_value = _despliegue(
+        EstadoDespliegue.REVERTIDO,
+        version="2.0.0",
+        version_anterior="1.0.0",
+    )
+    mensaje = MensajeSimulado()
+    contexto = _contexto()
+
+    await interfaz.mostrar_aplicaciones(_actualizacion(mensaje), contexto)
+    assert "12 · api-hermes · servidor 7 · 1.0.0" in mensaje.respuestas[-1][0]
+
+    contexto.args = ["12"]
+    await interfaz.consultar_estado_aplicacion(_actualizacion(mensaje), contexto)
+    assert "Estado: operativa" in mensaje.respuestas[-1][0]
+    assert "Integridad: verificada" in mensaje.respuestas[-1][0]
+
+    contexto.args = ["12", "2.0.0", "/srv/hermes/artefactos/api-2.bin"]
+    await interfaz.solicitar_despliegue(_actualizacion(mensaje), contexto)
+    teclado = mensaje.respuestas[-1][1]
+    codigo = teclado.inline_keyboard[0][0].callback_data
+    consulta = ConsultaBotonSimulada(codigo)
+    await interfaz.resolver_confirmacion_despliegue(
+        _actualizacion(mensaje, consulta=consulta), contexto
+    )
+    assert consulta.respondida is True
+    datos = gestor.desplegar_aplicacion.await_args.args[3]
+    assert datos.confirmar is True
+    assert "Despliegue completado" in mensaje.respuestas[-1][0]
+
+    contexto.args = ["12", "41"]
+    await interfaz.solicitar_reversion_despliegue(_actualizacion(mensaje), contexto)
+    teclado = mensaje.respuestas[-1][1]
+    codigo = teclado.inline_keyboard[0][0].callback_data
+    await interfaz.resolver_confirmacion_despliegue(
+        _actualizacion(mensaje, consulta=ConsultaBotonSimulada(codigo)), contexto
+    )
+    gestor.revertir_despliegue.assert_awaited_once_with(123_456, 900, 12, 41)
+    assert "Reversión completada" in mensaje.respuestas[-1][0]
 
 
 @pytest.mark.asyncio

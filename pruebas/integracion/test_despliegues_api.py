@@ -11,17 +11,25 @@ from sqlalchemy import delete, select
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import ErrorConflictoDatos, ErrorRecursoNoEncontrado
+from aplicacion.esquemas.despliegues import SolicitudDespliegue
 from aplicacion.interfaces.transporte_remoto import (
     InformacionArchivoRemoto,
     ResultadoEjecucionRemota,
 )
 from aplicacion.modelos.acceso import Rol, Usuario
 from aplicacion.modelos.despliegue import PlantillaDespliegue
-from aplicacion.modelos.enumeraciones import SistemaOperativo, TipoCredencialConexion
+from aplicacion.modelos.enumeraciones import (
+    CanalAuditoria,
+    SistemaOperativo,
+    TipoCanalMensajeria,
+    TipoCredencialConexion,
+)
+from aplicacion.modelos.identidad_mensajeria import IdentidadMensajeria
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.principal import crear_aplicacion
 from aplicacion.seguridad.contrasenas import generar_hash_contrasena
+from aplicacion.servicios.gestor_telegram import GestorTelegram
 
 
 class TransporteDespliegueSimulado:
@@ -118,13 +126,14 @@ class TransporteDespliegueSimulado:
 
 @pytest.fixture
 async def contexto_despliegues() -> AsyncIterator[
-    tuple[object, tuple[str, str], tuple[str, str], int, str]
+    tuple[object, tuple[str, str], tuple[str, str], int, str, int]
 ]:
     configuracion = Configuracion(limite_archivo_transferencia_bytes=4_096)  # type: ignore[call-arg]
     motor = crear_motor_base_datos(configuracion)
     fabrica_sesiones = crear_fabrica_sesiones(motor)
     prefijo = f"despliegues-{uuid4().hex[:10]}"
     clave = "clave-segura-pruebas-despliegues"
+    identificador_telegram = 700_000_000_000 + int(prefijo[-8:], 16)
     async with fabrica_sesiones() as sesion:
         administrador = await sesion.scalar(select(Rol).where(Rol.nombre == "administrador"))
         auditor = await sesion.scalar(select(Rol).where(Rol.nombre == "auditor"))
@@ -153,7 +162,14 @@ async def contexto_despliegues() -> AsyncIterator[
             referencia_credencial="archivo:clave_prueba",
             activo=True,
         )
-        sesion.add_all([usuario_admin, usuario_auditor, servidor])
+        identidad_telegram = IdentidadMensajeria(
+            usuario=usuario_admin,
+            canal=TipoCanalMensajeria.TELEGRAM,
+            identificador_externo=str(identificador_telegram),
+            nombre_externo="administrador_despliegues",
+            activo=True,
+        )
+        sesion.add_all([usuario_admin, usuario_auditor, servidor, identidad_telegram])
         await sesion.commit()
         await sesion.refresh(servidor)
         id_servidor = servidor.id_servidor
@@ -170,6 +186,7 @@ async def contexto_despliegues() -> AsyncIterator[
             (f"{prefijo}-auditor", clave),
             id_servidor,
             prefijo,
+            identificador_telegram,
         )
     finally:
         async with fabrica_sesiones() as sesion:
@@ -190,15 +207,23 @@ async def contexto_despliegues() -> AsyncIterator[
 @pytest.mark.integracion
 @pytest.mark.asyncio
 async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
-    contexto_despliegues: tuple[object, tuple[str, str], tuple[str, str], int, str],
+    contexto_despliegues: tuple[object, tuple[str, str], tuple[str, str], int, str, int],
 ) -> None:
-    aplicacion, credencial_admin, credencial_auditor, id_servidor, prefijo = contexto_despliegues
+    (
+        aplicacion,
+        credencial_admin,
+        credencial_auditor,
+        id_servidor,
+        prefijo,
+        identificador_telegram,
+    ) = contexto_despliegues
     transporte_http = httpx.ASGITransport(app=aplicacion)  # type: ignore[arg-type]
     raiz_servidor = f"/api/v1/servidores/{id_servidor}"
     destino = "/srv/hermes/aplicaciones/api.bin"
     artefacto_v1 = "/srv/hermes/artefactos/api-1.0.bin"
     artefacto_v2 = "/srv/hermes/artefactos/api-2.0.bin"
     artefacto_fallido = "/srv/hermes/artefactos/api-3.0.bin"
+    artefacto_telegram = "/srv/hermes/artefactos/api-4.0.bin"
 
     async with httpx.AsyncClient(transport=transporte_http, base_url="http://pruebas") as cliente:
         respuesta_ruta = await cliente.post(
@@ -264,6 +289,7 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
             (artefacto_v1, b"version uno"),
             (artefacto_v2, b"version dos"),
             (artefacto_fallido, b"version defectuosa"),
+            (artefacto_telegram, b"version telegram"),
         ):
             respuesta_carga = await cliente.put(
                 f"{raiz_servidor}/archivos/cargar",
@@ -339,18 +365,53 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         estados = [item["estado"] for item in historial.json()]
         assert estados == ["fallido", "revertido", "completado"]
 
+    gestor_telegram = GestorTelegram(
+        aplicacion.state.fabrica_sesiones,
+        TransporteDespliegueSimulado,
+        aplicacion.state.configuracion,
+    )
+    aplicaciones = await gestor_telegram.consultar_aplicaciones(identificador_telegram, 1_400)
+    assert any(item.id_aplicacion_administrada == id_aplicacion for item in aplicaciones)
+    preparado = await gestor_telegram.comprobar_despliegue(
+        identificador_telegram,
+        1_401,
+        id_aplicacion,
+        SolicitudDespliegue(
+            version="4.0.0",
+            ruta_artefacto=artefacto_telegram,
+        ),
+    )
+    assert preparado.nombre == f"{prefijo}-api"
+    despliegue_telegram = await gestor_telegram.desplegar_aplicacion(
+        identificador_telegram,
+        1_402,
+        id_aplicacion,
+        SolicitudDespliegue(
+            version="4.0.0",
+            ruta_artefacto=artefacto_telegram,
+            confirmar=True,
+        ),
+    )
+    assert despliegue_telegram.estado.value == "completado"
+    assert TransporteDespliegueSimulado.archivos[destino] == b"version telegram"
+
     async with aplicacion.state.fabrica_sesiones() as sesion:
-        acciones = list(
+        registros = list(
             (
                 await sesion.scalars(
-                    select(RegistroAuditoria.accion).where(
+                    select(RegistroAuditoria).where(
                         RegistroAuditoria.nombre_usuario == credencial_admin[0]
                     )
                 )
             ).all()
         )
+    acciones = [registro.accion for registro in registros]
     assert "crear_plantilla_despliegue" in acciones
     assert "crear_aplicacion_administrada" in acciones
-    assert acciones.count("desplegar_aplicacion") == 3
+    assert acciones.count("desplegar_aplicacion") == 4
     assert "revertir_despliegue" in acciones
+    assert any(
+        registro.accion == "desplegar_aplicacion" and registro.canal is CanalAuditoria.TELEGRAM
+        for registro in registros
+    )
     assert TransporteDespliegueSimulado.reinicios >= 5

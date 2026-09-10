@@ -17,11 +17,17 @@ from aplicacion.esquemas.archivos import (
     DescargaArchivo,
     InformacionArchivoRespuesta,
 )
+from aplicacion.esquemas.despliegues import (
+    AplicacionAdministradaRespuesta,
+    DespliegueAplicacionRespuesta,
+    EstadoAplicacionRespuesta,
+    SolicitudDespliegue,
+)
 from aplicacion.esquemas.inventario import GrupoDetalle, ServidorResumen
 from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import CanalAuditoria, TipoCanalMensajeria
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
-from aplicacion.servicios import gestor_archivos
+from aplicacion.servicios import gestor_archivos, gestor_despliegues
 from aplicacion.servicios.auditoria import ContextoAuditoria
 from aplicacion.servicios.gestor_acciones import (
     comprobar_permisos_adicionales_accion,
@@ -392,3 +398,136 @@ class GestorMensajeria:
                 self._configuracion,
                 contexto=contexto,
             )
+
+    async def consultar_aplicaciones(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+    ) -> list[AplicacionAdministradaRespuesta]:
+        """Lista aplicaciones después de autenticar y aplicar el permiso común."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(
+                sesion, None, usuario, "consultar_aplicaciones", contexto
+            )
+            aplicaciones = await gestor_despliegues.listar_aplicaciones(
+                sesion,
+                desplazamiento=0,
+                limite=self._max_servidores_mostrados,
+            )
+            return [
+                AplicacionAdministradaRespuesta.model_validate(aplicacion)
+                for aplicacion in aplicaciones
+            ]
+
+    async def consultar_estado_aplicacion(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_aplicacion: int,
+    ) -> EstadoAplicacionRespuesta:
+        """Consulta archivo y servicio mediante el mismo caso de uso que la API."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(
+                sesion, None, usuario, "consultar_aplicaciones", contexto
+            )
+            return await gestor_despliegues.consultar_estado_aplicacion(
+                sesion,
+                id_aplicacion,
+                self._fabrica_transporte,
+                self._configuracion,
+            )
+
+    async def comprobar_despliegue(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_aplicacion: int,
+        datos: SolicitudDespliegue,
+    ) -> AplicacionAdministradaRespuesta:
+        """Autoriza y fija los datos antes de mostrar un desafío efímero."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(
+                sesion, None, usuario, "desplegar_aplicaciones", contexto
+            )
+            aplicacion = await gestor_despliegues.obtener_aplicacion(sesion, id_aplicacion)
+            gestor_despliegues.validar_preparacion_despliegue(aplicacion, datos)
+            return AplicacionAdministradaRespuesta.model_validate(aplicacion)
+
+    async def desplegar_aplicacion(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_aplicacion: int,
+        datos: SolicitudDespliegue,
+    ) -> DespliegueAplicacionRespuesta:
+        """Ejecuta un despliegue confirmado y conserva el canal en auditoría."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(
+                sesion, None, usuario, "desplegar_aplicaciones", contexto
+            )
+            despliegue = await gestor_despliegues.desplegar_aplicacion(
+                sesion,
+                id_aplicacion,
+                datos,
+                usuario,
+                self._fabrica_transporte,
+                self._configuracion,
+                contexto=contexto,
+            )
+            return DespliegueAplicacionRespuesta.model_validate(despliegue)
+
+    async def comprobar_reversion_despliegue(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_aplicacion: int,
+        id_despliegue: int,
+    ) -> AplicacionAdministradaRespuesta:
+        """Autoriza una reversión y exige que corresponda a la versión vigente."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(sesion, None, usuario, "revertir_despliegues", contexto)
+            aplicacion = await gestor_despliegues.obtener_aplicacion(sesion, id_aplicacion)
+            await gestor_despliegues.validar_preparacion_reversion(
+                sesion, aplicacion, id_despliegue
+            )
+            return AplicacionAdministradaRespuesta.model_validate(aplicacion)
+
+    async def revertir_despliegue(
+        self,
+        identificador_externo: str | int,
+        identificador_evento: str | int,
+        id_aplicacion: int,
+        id_despliegue: int,
+    ) -> DespliegueAplicacionRespuesta:
+        """Restaura el punto previo después de una confirmación del canal."""
+
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            await comprobar_permiso_usuario(sesion, None, usuario, "revertir_despliegues", contexto)
+            despliegue = await gestor_despliegues.revertir_despliegue(
+                sesion,
+                id_aplicacion,
+                id_despliegue,
+                usuario,
+                self._fabrica_transporte,
+                self._configuracion,
+                True,
+                contexto=contexto,
+            )
+            return DespliegueAplicacionRespuesta.model_validate(despliegue)

@@ -11,6 +11,7 @@ from time import monotonic
 from typing import Any
 from uuid import uuid4
 
+from pydantic import ValidationError
 from slack_bolt.async_app import AsyncApp
 
 from aplicacion.configuracion import Configuracion
@@ -22,6 +23,7 @@ from aplicacion.esquemas.acciones import (
     SolicitudEjecucionAccion,
     SolicitudEjecucionMultiple,
 )
+from aplicacion.esquemas.despliegues import SolicitudDespliegue
 from aplicacion.interfaces.canal_mensajeria import CanalMensajeria
 from aplicacion.interfaces.formateo_usuarios import (
     formatear_listado_usuarios,
@@ -74,12 +76,24 @@ class ConfirmacionSlack:
     vence_en: float
 
 
+@dataclass(frozen=True, slots=True)
+class ConfirmacionDespliegueSlack:
+    """Desafío de despliegue o reversión ligado a una aplicación."""
+
+    operacion: str
+    id_aplicacion: int
+    id_despliegue: int | None
+    solicitud: SolicitudDespliegue | None
+    codigo_aleatorio: str
+    vence_en: float
+
+
 @dataclass(slots=True)
 class EstadoUsuarioSlack:
     """Estado efímero acotado por espacio de trabajo y usuario."""
 
     seleccion: SeleccionServidores | None = None
-    confirmacion: ConfirmacionSlack | None = None
+    confirmacion: ConfirmacionSlack | ConfirmacionDespliegueSlack | None = None
     solicitudes_recientes: deque[float] = field(default_factory=deque)
     ultimo_uso: float = field(default_factory=monotonic)
 
@@ -240,7 +254,9 @@ class InterfazSlack(CanalMensajeria):
             "agregar_grupo <cuenta> <grupo> · quitar_grupo <cuenta> <grupo> · "
             "bloquear_usuario <cuenta> · desbloquear_usuario <cuenta> · "
             "eliminar_usuario <cuenta> · archivo_info <ruta> · "
-            "descargar_archivo <ruta> · reiniciar · cancelar"
+            "descargar_archivo <ruta> · aplicaciones · estado_aplicacion <id> · "
+            "desplegar <id> <versión> <ruta> · "
+            "revertir_despliegue <id_app> <id_despliegue> · reiniciar · cancelar"
         )
 
     async def recibir_comando(
@@ -315,6 +331,14 @@ class InterfazSlack(CanalMensajeria):
             await self._consultar_archivo(argumentos, solicitud, estado, responder)
         elif subcomando == "descargar_archivo":
             await self._descargar_archivo(argumentos, solicitud, estado, responder)
+        elif subcomando == "aplicaciones" and not argumentos:
+            await self._mostrar_aplicaciones(solicitud, responder)
+        elif subcomando == "estado_aplicacion":
+            await self._consultar_estado_aplicacion(argumentos, solicitud, responder)
+        elif subcomando == "desplegar":
+            await self._solicitar_despliegue(argumentos, solicitud, estado, responder)
+        elif subcomando == "revertir_despliegue":
+            await self._solicitar_reversion_despliegue(argumentos, solicitud, estado, responder)
         elif subcomando == "crear_usuario":
             await self._crear_usuario_sistema(argumentos, solicitud, estado, responder)
         elif subcomando in {"agregar_grupo", "quitar_grupo"}:
@@ -458,6 +482,215 @@ class InterfazSlack(CanalMensajeria):
             initial_comment="Archivo descargado de forma segura por Hermes.",
         )
         await self._responder(responder, "El archivo se envió en esta conversación directa.")
+
+    async def _mostrar_aplicaciones(
+        self,
+        solicitud: SolicitudSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        try:
+            aplicaciones = await self._gestor.consultar_aplicaciones(
+                solicitud.identidad_externa,
+                solicitud.identificador_solicitud,
+            )
+        except ErrorHermes as error:
+            await self._responder(
+                responder, f"No fue posible consultar aplicaciones: {error.mensaje}"
+            )
+            return
+        if not aplicaciones:
+            await self._responder(responder, "No hay aplicaciones administradas registradas.")
+            return
+        lineas = [
+            f"{aplicacion.id_aplicacion_administrada} · {aplicacion.nombre} · "
+            f"servidor {aplicacion.id_servidor} · "
+            f"{aplicacion.version_actual or 'sin despliegue'}"
+            for aplicacion in aplicaciones
+        ]
+        await self._responder(responder, "Aplicaciones administradas:\n" + "\n".join(lineas))
+
+    async def _consultar_estado_aplicacion(
+        self,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        id_aplicacion = (
+            self._convertir_entero(argumentos[0], MAX_ID_SERVIDOR) if len(argumentos) == 1 else None
+        )
+        if id_aplicacion is None:
+            await self._responder(
+                responder, "Uso correcto: `/hermes estado_aplicacion <id_aplicacion>`."
+            )
+            return
+        try:
+            estado = await self._gestor.consultar_estado_aplicacion(
+                solicitud.identidad_externa,
+                solicitud.identificador_solicitud,
+                id_aplicacion,
+            )
+        except ErrorHermes as error:
+            await self._responder(
+                responder, f"No fue posible consultar la aplicación: {error.mensaje}"
+            )
+            return
+        integridad = (
+            "verificada"
+            if estado.integridad_verificada is True
+            else "incorrecta"
+            if estado.integridad_verificada is False
+            else "sin referencia"
+        )
+        servicio = (
+            f"{estado.servicio}: {estado.estado_servicio}"
+            if estado.servicio is not None
+            else "no asociado"
+        )
+        await self._responder(
+            responder,
+            f"Aplicación: {estado.nombre_aplicacion}\n"
+            f"Servidor: {estado.nombre_servidor}\n"
+            f"Sistema: {estado.sistema_operativo.value}\n"
+            f"Versión: {estado.version_actual or 'sin despliegue'}\n"
+            f"Estado: {estado.estado}\n"
+            f"Integridad: {integridad}\n"
+            f"Servicio: {servicio}",
+        )
+
+    async def _solicitar_despliegue(
+        self,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        id_aplicacion = (
+            self._convertir_entero(argumentos[0], MAX_ID_SERVIDOR) if len(argumentos) >= 3 else None
+        )
+        if id_aplicacion is None:
+            await self._responder(
+                responder,
+                "Uso correcto: `/hermes desplegar <id_aplicacion> <version> <ruta_artefacto>`.",
+            )
+            return
+        try:
+            datos = SolicitudDespliegue(
+                version=argumentos[1],
+                ruta_artefacto=" ".join(argumentos[2:]),
+            )
+            aplicacion = await self._gestor.comprobar_despliegue(
+                solicitud.identidad_externa,
+                solicitud.identificador_solicitud,
+                id_aplicacion,
+                datos,
+            )
+        except ValidationError:
+            await self._responder(responder, "La versión o ruta del artefacto no es válida.")
+            return
+        except ErrorHermes as error:
+            await self._responder(
+                responder, f"No se puede solicitar el despliegue: {error.mensaje}"
+            )
+            return
+        await self._crear_confirmacion_despliegue(
+            estado,
+            ConfirmacionDespliegueSlack(
+                operacion="desplegar",
+                id_aplicacion=id_aplicacion,
+                id_despliegue=None,
+                solicitud=datos,
+                codigo_aleatorio=secrets.token_urlsafe(12),
+                vence_en=monotonic() + self._configuracion.tiempo_confirmacion_slack_segundos,
+            ),
+            f"instalar la versión {datos.version} de {aplicacion.nombre}",
+            responder,
+        )
+
+    async def _solicitar_reversion_despliegue(
+        self,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        ids = (
+            [self._convertir_entero(valor, MAX_ID_SERVIDOR) for valor in argumentos]
+            if len(argumentos) == 2
+            else []
+        )
+        if len(ids) != 2 or any(identificador is None for identificador in ids):
+            await self._responder(
+                responder,
+                "Uso correcto: `/hermes revertir_despliegue <id_aplicacion> <id_despliegue>`.",
+            )
+            return
+        id_aplicacion, id_despliegue = ids
+        if id_aplicacion is None or id_despliegue is None:
+            return
+        try:
+            aplicacion = await self._gestor.comprobar_reversion_despliegue(
+                solicitud.identidad_externa,
+                solicitud.identificador_solicitud,
+                id_aplicacion,
+                id_despliegue,
+            )
+        except ErrorHermes as error:
+            await self._responder(responder, f"No se puede solicitar la reversión: {error.mensaje}")
+            return
+        await self._crear_confirmacion_despliegue(
+            estado,
+            ConfirmacionDespliegueSlack(
+                operacion="revertir",
+                id_aplicacion=id_aplicacion,
+                id_despliegue=id_despliegue,
+                solicitud=None,
+                codigo_aleatorio=secrets.token_urlsafe(12),
+                vence_en=monotonic() + self._configuracion.tiempo_confirmacion_slack_segundos,
+            ),
+            f"restaurar la versión anterior de {aplicacion.nombre}",
+            responder,
+        )
+
+    async def _crear_confirmacion_despliegue(
+        self,
+        estado: EstadoUsuarioSlack,
+        confirmacion: ConfirmacionDespliegueSlack,
+        descripcion: str,
+        responder: ResponderSlack,
+    ) -> None:
+        estado.confirmacion = confirmacion
+        bloques = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"¿Confirmas {descripcion}?",
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Confirmar"},
+                        "style": "danger",
+                        "action_id": "hermes_confirmar",
+                        "value": confirmacion.codigo_aleatorio,
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Cancelar"},
+                        "action_id": "hermes_cancelar",
+                        "value": confirmacion.codigo_aleatorio,
+                    },
+                ],
+            },
+        ]
+        await self._responder(
+            responder,
+            "Confirma la operación de aplicación.",
+            blocks=bloques,
+        )
 
     async def _mostrar_servidores(
         self,
@@ -1060,6 +1293,41 @@ class InterfazSlack(CanalMensajeria):
             await self._responder(respond, "Operación cancelada.", replace_original=True)
             return
         await self._responder(respond, "Confirmación aceptada.", replace_original=True)
+        if isinstance(pendiente, ConfirmacionDespliegueSlack):
+            try:
+                if pendiente.operacion == "desplegar" and pendiente.solicitud is not None:
+                    resultado = await self._gestor.desplegar_aplicacion(
+                        solicitud.identidad_externa,
+                        solicitud.identificador_solicitud,
+                        pendiente.id_aplicacion,
+                        pendiente.solicitud.model_copy(update={"confirmar": True}),
+                    )
+                    texto = (
+                        "Despliegue completado. Aplicación "
+                        f"{resultado.id_aplicacion_administrada}, versión {resultado.version}."
+                    )
+                elif pendiente.operacion == "revertir" and pendiente.id_despliegue is not None:
+                    resultado = await self._gestor.revertir_despliegue(
+                        solicitud.identidad_externa,
+                        solicitud.identificador_solicitud,
+                        pendiente.id_aplicacion,
+                        pendiente.id_despliegue,
+                    )
+                    texto = (
+                        "Reversión completada. La aplicación "
+                        f"{resultado.id_aplicacion_administrada} restauró la versión "
+                        f"{resultado.version_anterior or 'inicial'}."
+                    )
+                else:
+                    await self._responder(
+                        respond, "La confirmación no contiene una operación válida."
+                    )
+                    return
+            except ErrorHermes as error:
+                await self._responder(respond, f"La operación no se completó: {error.mensaje}")
+                return
+            await self._responder(respond, texto)
+            return
         estado.seleccion = pendiente.seleccion
         await self._ejecutar_accion(
             solicitud,

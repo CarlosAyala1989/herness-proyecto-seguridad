@@ -220,6 +220,50 @@ async def listar_despliegues(
     return list((await sesion.scalars(consulta)).all())
 
 
+def validar_preparacion_despliegue(
+    aplicacion: AplicacionAdministrada,
+    datos: SolicitudDespliegue,
+) -> None:
+    """Comprueba estado, versión y rutas antes de solicitar confirmación."""
+
+    servidor = aplicacion.servidor
+    plantilla = aplicacion.plantilla
+    if not servidor.activo:
+        raise ErrorServidorInactivo()
+    if not aplicacion.activo or not plantilla.activo:
+        raise ErrorConflictoDatos("La aplicación o su plantilla está inactiva.")
+    if aplicacion.version_actual == datos.version:
+        raise ErrorConflictoDatos("La versión solicitada ya está instalada.")
+    ruta_artefacto, _ = resolver_rutas_habilitadas(servidor, datos.ruta_artefacto, escritura=False)
+    ruta_destino, _ = resolver_rutas_habilitadas(servidor, plantilla.ruta_destino, escritura=True)
+    resolver_rutas_habilitadas(servidor, plantilla.ruta_destino, escritura=False)
+    if ruta_artefacto == ruta_destino:
+        raise ErrorConflictoDatos("El artefacto y el destino deben ser archivos diferentes.")
+
+
+async def validar_preparacion_reversion(
+    sesion: AsyncSession,
+    aplicacion: AplicacionAdministrada,
+    id_despliegue: int,
+) -> DespliegueAplicacion:
+    """Exige que el historial indicado represente exactamente la versión vigente."""
+
+    despliegue = await sesion.scalar(
+        select(DespliegueAplicacion).where(
+            DespliegueAplicacion.id_despliegue_aplicacion == id_despliegue,
+            DespliegueAplicacion.id_aplicacion_administrada
+            == aplicacion.id_aplicacion_administrada,
+        )
+    )
+    if (
+        despliegue is None
+        or despliegue.estado is not EstadoDespliegue.COMPLETADO
+        or aplicacion.version_actual != despliegue.version
+    ):
+        raise ErrorDespliegueNoRevertible()
+    return despliegue
+
+
 async def _ejecutar_servicio(
     transporte: TransporteRemoto,
     servidor: Servidor,
@@ -311,10 +355,7 @@ async def desplegar_aplicacion(
         raise ErrorConfirmacionRequerida()
     servidor = aplicacion.servidor
     plantilla = aplicacion.plantilla
-    if not aplicacion.activo or not servidor.activo or not plantilla.activo:
-        raise ErrorServidorInactivo()
-    if aplicacion.version_actual == datos.version:
-        raise ErrorConflictoDatos("La versión solicitada ya está instalada.")
+    validar_preparacion_despliegue(aplicacion, datos)
 
     ruta_artefacto, rutas_artefacto = resolver_rutas_habilitadas(
         servidor, datos.ruta_artefacto, escritura=False
@@ -477,18 +518,7 @@ async def revertir_despliegue(
     if not confirmar:
         raise ErrorConfirmacionRequerida()
     aplicacion = await obtener_aplicacion(sesion, id_aplicacion, bloquear=True)
-    despliegue = await sesion.scalar(
-        select(DespliegueAplicacion).where(
-            DespliegueAplicacion.id_despliegue_aplicacion == id_despliegue,
-            DespliegueAplicacion.id_aplicacion_administrada == id_aplicacion,
-        )
-    )
-    if (
-        despliegue is None
-        or despliegue.estado is not EstadoDespliegue.COMPLETADO
-        or aplicacion.version_actual != despliegue.version
-    ):
-        raise ErrorDespliegueNoRevertible()
+    despliegue = await validar_preparacion_reversion(sesion, aplicacion, id_despliegue)
     servidor = aplicacion.servidor
     plantilla = aplicacion.plantilla
     ruta_destino, rutas_escritura = resolver_rutas_habilitadas(
