@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from aplicacion.acciones.errores import ErrorCuentaOperadorSSH
 from aplicacion.acciones.registro import (
     CodigoAccion,
     ParametrosAccion,
@@ -113,6 +114,16 @@ def test_ciclo_real_de_usuario_en_ubuntu_24_04(
         text=True,
         check=True,
     )
+    with pytest.raises(ErrorCuentaOperadorSSH):
+        _ejecutar_accion(
+            ruta_docker,
+            nombre_contenedor,
+            CodigoAccion.BLOQUEAR_USUARIO_SISTEMA,
+            ParametrosNombreUsuarioSistema(
+                nombre_usuario="root",
+                autorizar_cuenta_protegida=True,
+            ),
+        )
     creacion = _ejecutar_accion(
         ruta_docker,
         nombre_contenedor,

@@ -15,7 +15,7 @@ from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.conexiones.errores import ErrorServidorSSHNoDisponible
 from aplicacion.configuracion import Configuracion
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
-from aplicacion.modelos.acceso import Rol, Usuario
+from aplicacion.modelos.acceso import Permiso, Rol, Usuario
 from aplicacion.modelos.grupo_servidor import GrupoServidor
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
@@ -196,6 +196,8 @@ class ContextoIntegracion:
     contrasena_administrador: str
     usuario_lector: str
     contrasena_lector: str
+    usuario_gestor_limitado: str
+    contrasena_gestor_limitado: str
     primer_registro_auditoria: int
 
 
@@ -207,6 +209,7 @@ async def contexto_integracion() -> AsyncIterator[ContextoIntegracion]:
     prefijo = f"prueba-{uuid4().hex[:10]}"
     contrasena_administrador = "administrador-prueba-seguro"
     contrasena_lector = "lector-prueba-seguro"
+    contrasena_gestor_limitado = "gestor-limitado-prueba-seguro"
 
     async with fabrica_sesiones() as sesion:
         primer_registro = await sesion.scalar(
@@ -216,6 +219,28 @@ async def contexto_integracion() -> AsyncIterator[ContextoIntegracion]:
         rol_auditor = await sesion.scalar(select(Rol).where(Rol.nombre == "auditor"))
         assert rol_administrador is not None
         assert rol_auditor is not None
+        permisos_gestion = list(
+            (
+                await sesion.scalars(
+                    select(Permiso).where(
+                        Permiso.codigo.in_(
+                            {
+                                "consultar_usuarios_sistema",
+                                "gestionar_usuarios_sistema",
+                                "eliminar_usuarios_sistema",
+                            }
+                        )
+                    )
+                )
+            ).all()
+        )
+        assert len(permisos_gestion) == 3
+        rol_gestor_limitado = Rol(
+            nombre=f"{prefijo}-gestor-usuarios",
+            descripcion="Gestión sin excepción para cuentas protegidas",
+            es_sistema=False,
+            permisos=permisos_gestion,
+        )
         administrador = Usuario(
             nombre_usuario=f"{prefijo}-admin",
             nombre_mostrar="Administrador de integración",
@@ -230,7 +255,14 @@ async def contexto_integracion() -> AsyncIterator[ContextoIntegracion]:
             activo=True,
             roles=[rol_auditor],
         )
-        sesion.add_all([administrador, lector])
+        gestor_limitado = Usuario(
+            nombre_usuario=f"{prefijo}-gestor-limitado",
+            nombre_mostrar="Gestor limitado de integración",
+            hash_contrasena=generar_hash_contrasena(contrasena_gestor_limitado),
+            activo=True,
+            roles=[rol_gestor_limitado],
+        )
+        sesion.add_all([administrador, lector, gestor_limitado])
         await sesion.commit()
 
     aplicacion = crear_aplicacion(configuracion, motor)
@@ -244,6 +276,8 @@ async def contexto_integracion() -> AsyncIterator[ContextoIntegracion]:
         contrasena_administrador=contrasena_administrador,
         usuario_lector=f"{prefijo}-lector",
         contrasena_lector=contrasena_lector,
+        usuario_gestor_limitado=f"{prefijo}-gestor-limitado",
+        contrasena_gestor_limitado=contrasena_gestor_limitado,
         primer_registro_auditoria=int(primer_registro or 0),
     )
     try:
@@ -260,6 +294,7 @@ async def contexto_integracion() -> AsyncIterator[ContextoIntegracion]:
                 delete(GrupoServidor).where(GrupoServidor.nombre.like(f"{prefijo}%"))
             )
             await sesion.execute(delete(Usuario).where(Usuario.nombre_usuario.like(f"{prefijo}%")))
+            await sesion.execute(delete(Rol).where(Rol.nombre.like(f"{prefijo}%")))
             await sesion.commit()
         await motor.dispose()
 
@@ -292,6 +327,10 @@ async def test_crud_persistente_permisos_y_auditoria(
     autenticacion_lector = (
         contexto_integracion.usuario_lector,
         contexto_integracion.contrasena_lector,
+    )
+    autenticacion_gestor_limitado = (
+        contexto_integracion.usuario_gestor_limitado,
+        contexto_integracion.contrasena_gestor_limitado,
     )
 
     async with httpx.AsyncClient(transport=transporte, base_url="http://pruebas") as cliente:
@@ -513,6 +552,32 @@ async def test_crud_persistente_permisos_y_auditoria(
             },
         )
         assert usuario_malicioso.status_code == 422
+
+        gestion_limitada = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/bloquear_usuario_sistema",
+            auth=autenticacion_gestor_limitado,
+            json={
+                "parametros": {
+                    "nombre_usuario": "usuario_h12",
+                    "autorizar_cuenta_protegida": False,
+                },
+                "confirmar": True,
+            },
+        )
+        assert gestion_limitada.status_code == 200, gestion_limitada.text
+
+        excepcion_protegida_denegada = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/bloquear_usuario_sistema",
+            auth=autenticacion_gestor_limitado,
+            json={
+                "parametros": {
+                    "nombre_usuario": "usuario_h12",
+                    "autorizar_cuenta_protegida": True,
+                },
+                "confirmar": True,
+            },
+        )
+        assert excepcion_protegida_denegada.status_code == 403
 
         grupo_multiple = await cliente.post(
             "/api/v1/grupos",
