@@ -132,7 +132,7 @@ class ErrorCuentaOperadorSSH(ErrorHermes):
 
     def __init__(self) -> None:
         super().__init__(
-            "No se puede bloquear ni eliminar la cuenta utilizada por la conexión de Hermes.",
+            "No se puede cambiar el estado ni eliminar la cuenta usada por la conexión de Hermes.",
             codigo="cuenta_operador_ssh",
             estado_http=HTTPStatus.CONFLICT,
         )

@@ -48,6 +48,12 @@ Los parámetros y la salida remota no se copian al detalle de auditoría.
 | `iniciar_servicio` | `gestionar_servicios` | `nombre_servicio` validado | Sí | Estado del servicio después del inicio. |
 | `detener_servicio` | `gestionar_servicios` | `nombre_servicio` validado | Sí | Estado del servicio después de la detención. |
 | `reiniciar_servicio` | `gestionar_servicios` | `nombre_servicio` validado | Sí | Estado del servicio después del reinicio. |
+| `listar_usuarios_sistema` | `consultar_usuarios_sistema` | Ninguno | No | Cuentas, identificadores, estados, protección y grupos. |
+| `crear_usuario_sistema` | `gestionar_usuarios_sistema` | Cuenta y nombre visible opcional | Sí | Cuenta inicialmente deshabilitada. |
+| `cambiar_grupo_usuario_sistema` | `gestionar_usuarios_sistema` | Cuenta, grupo, operación y excepción protegida | Sí | Pertenencia actualizada. |
+| `bloquear_usuario_sistema` | `gestionar_usuarios_sistema` | Cuenta y excepción protegida | Sí | Cuenta bloqueada o deshabilitada. |
+| `desbloquear_usuario_sistema` | `gestionar_usuarios_sistema` | Cuenta y excepción protegida | Sí | Cuenta desbloqueada o habilitada. |
+| `eliminar_usuario_sistema` | Dos permisos de gestión y eliminación | Cuenta y excepción protegida | Sí | Cuenta eliminada. |
 
 Linux usa herramientas del sistema y Windows Server invoca PowerShell de forma
 no interactiva. Ambos adaptadores producen los mismos campos de respuesta. Un
@@ -108,8 +114,8 @@ curl --user administrador_local \
 ```
 
 Las mutaciones utilizan el mismo cuerpo y además requieren
-`"confirmar": true`. Consulta `servicios.md` antes de conceder privilegios a la
-cuenta remota.
+`"confirmar": true`. Consulta `servicios.md` y `usuarios_sistema.md` antes de
+conceder privilegios a la cuenta remota.
 
 ## Operación sensible de reinicio
 
@@ -159,4 +165,5 @@ Una operación nueva debe incorporar su código al catálogo, un esquema de
 parámetros estricto, un permiso persistente cuando corresponda y una
 implementación en ambos adaptadores. Telegram ya convierte la interacción del
 usuario en estas solicitudes sin contener órdenes SSH ni reglas de autorización
-propias. Slack seguirá el mismo contrato en el hito 9.
+propias. Slack usa actualmente el mismo contrato y tampoco contiene órdenes del
+sistema.

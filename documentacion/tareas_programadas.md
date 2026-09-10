@@ -174,7 +174,8 @@ no detienen los demás destinos ni las tareas siguientes.
 
 ## Alcance
 
-Este hito admite fecha única e intervalo fijo persistente. No incorpora todavía
-expresiones cron, calendarios complejos, administración de cuentas del sistema,
-transferencia de archivos ni despliegues; corresponden a necesidades o hitos
-posteriores.
+Este hito admite fecha única e intervalo fijo persistente. Desde el hito 12, las
+acciones de usuarios también pueden programarse porque pertenecen al catálogo
+común; conservan sus permisos adicionales y confirmaciones. No se incorporan
+todavía expresiones cron, calendarios complejos, transferencia de archivos ni
+despliegues.

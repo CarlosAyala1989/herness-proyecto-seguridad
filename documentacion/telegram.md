@@ -1,11 +1,11 @@
 # Integración con Telegram
 
-Telegram es una interfaz del backend común de Hermes; ofrece diagnóstico desde
-el hito 6, gestión confirmada de servicios desde el hito 7 y selección múltiple
-desde el hito 8. El bot no construye órdenes del sistema, no se conecta por SSH
-directamente y no mantiene una lista de usuarios dentro del código. Cada
-interacción consulta MariaDB y delega en los servicios de inventario, permisos,
-acciones y auditoría.
+Telegram es una interfaz del backend común de Hermes; ofrece diagnóstico,
+gestión confirmada de servicios, selección múltiple y, desde el hito 12,
+administración controlada de cuentas locales. El bot no construye órdenes del
+sistema, no se conecta por SSH directamente y no mantiene una lista de usuarios
+dentro del código. Cada interacción consulta MariaDB y delega en los servicios
+de inventario, permisos, acciones y auditoría.
 
 Desde el hito 10, el proceso de monitoreo también puede enviar alertas y
 recuperaciones al mismo usuario. La identidad debe estar vinculada, activa y
@@ -153,6 +153,13 @@ preparar el inventario y administrar usuarios.
 | `/iniciar_servicio <nombre>` | Solicita confirmación antes de iniciar un servicio. |
 | `/detener_servicio <nombre>` | Solicita confirmación antes de detener un servicio. |
 | `/reiniciar_servicio <nombre>` | Solicita confirmación antes de reiniciar un servicio. |
+| `/usuarios` | Lista cuentas locales, estado, protección y grupos. |
+| `/crear_usuario <cuenta> [nombre]` | Crea una cuenta local deshabilitada. |
+| `/agregar_grupo <cuenta> <grupo>` | Agrega una cuenta a un grupo local. |
+| `/quitar_grupo <cuenta> <grupo>` | Quita una cuenta de un grupo local. |
+| `/bloquear_usuario <cuenta>` | Solicita bloquear o deshabilitar una cuenta. |
+| `/desbloquear_usuario <cuenta>` | Solicita desbloquear o habilitar una cuenta. |
+| `/eliminar_usuario <cuenta>` | Solicita eliminar una cuenta local. |
 | `/identidad` | Ejecuta `obtener_identidad` sobre la selección actual. |
 | `/proceso <id>` | Ejecuta `consultar_proceso` con un identificador acotado. |
 | `/reiniciar` | Solicita una confirmación efímera antes del reinicio. |
@@ -173,7 +180,8 @@ Con el bot, MariaDB, OpenSSH y el agente activos:
 6. Envía `/servicio ssh.service` en Linux o `/servicio sshd` en Windows y
    comprueba el estado. Esta consulta no cambia el servicio.
 7. Envía `/proceso 1` y comprueba que se informa el proceso del sistema.
-8. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
+8. Envía `/usuarios` y comprueba las cuentas sin realizar cambios.
+9. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
    `telegram`.
 
 Para una prueba múltiple de solo lectura, registra varios destinos de
@@ -188,10 +196,10 @@ laboratorio, asócialos a un grupo y ejecuta:
 El resumen debe contener una línea independiente por servidor. Un destino
 apagado debe aparecer como fallido sin impedir las respuestas de los demás.
 
-No uses `/reiniciar` ni los comandos que modifican servicios para una
-demostración ordinaria. Sus botones autorizan cambios reales. Las pruebas
-automatizadas de mutación sustituyen el transporte y nunca alteran el
-anfitrión.
+No uses `/reiniciar` ni los comandos que modifican servicios o usuarios para
+una demostración ordinaria. Sus botones autorizan cambios reales. Prueba las
+cuentas sobre una VM o contenedor desechable siguiendo `usuarios_sistema.md`,
+nunca sobre una cuenta necesaria del anfitrión.
 
 ## Controles operativos
 
@@ -211,6 +219,8 @@ anfitrión.
   el usuario decide.
 - Las respuestas múltiples se dividen respetando el límite de mensaje y no
   omiten silenciosamente resultados.
+- El bot no recibe contraseñas y siempre conserva desactivada la excepción para
+  cuentas protegidas; esa autorización reforzada queda limitada a la API local.
 - Los registros solo incluyen el tipo de un error inesperado de Telegram; no
   incluyen el mensaje, la actualización ni el token.
 

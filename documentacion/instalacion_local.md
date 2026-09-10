@@ -1,6 +1,6 @@
 # Instalación local
 
-Esta guía permite iniciar y comprobar los hitos 1 a 11 de Hermes en Ubuntu 24.04.
+Esta guía permite iniciar y comprobar los hitos 1 a 12 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 
 ## Versiones seleccionadas
@@ -118,7 +118,7 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0008 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0009 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
@@ -131,6 +131,8 @@ La séptima incorpora configuraciones de monitoreo, servicios críticos, alertas
 suscripciones, entregas y permisos de consulta y administración.
 La octava añade tareas programadas, ocurrencias idempotentes, entregas de
 resultados y permisos de consulta y administración.
+La novena añade permisos separados para consultar, gestionar y eliminar
+usuarios remotos, además de una autorización reforzada para cuentas protegidas.
 
 ## 5. Crear el primer administrador
 
@@ -192,7 +194,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -369,7 +371,15 @@ Para mantener el calendario activo, configura sus límites en `.env` e inicia
 `python -m aplicacion.tareas` en una terminal dedicada. FastAPI no ejecuta el
 calendario dentro del proceso web.
 
-## 12. Ejecutar comprobaciones
+## 12. Preparar la administración de usuarios remotos
+
+Aplica la revisión `0009` y prepara una cuenta SSH dedicada con privilegios
+limitados en cada máquina de laboratorio. Las instrucciones y comandos de
+prueba están en `documentacion/usuarios_sistema.md`. No concedas `sudo` general
+ni pruebes mutaciones sobre el Ubuntu anfitrión: usa una VM o el contenedor
+efímero descrito en esa guía.
+
+## 13. Ejecutar comprobaciones
 
 Pruebas unitarias, sin depender de Docker:
 
@@ -377,7 +387,8 @@ Pruebas unitarias, sin depender de Docker:
 pytest --cov=aplicacion --cov-report=term-missing
 ```
 
-Pruebas reales contra MariaDB y un servidor SSH efímero local:
+Pruebas reales contra MariaDB, un servidor SSH efímero y un Ubuntu 24.04
+desechable para el ciclo de usuarios:
 
 ```bash
 pytest -o addopts='' -m integracion -vv
@@ -392,15 +403,16 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 11 añade tareas de fecha única o intervalo fijo, historial de
-ejecuciones, cancelación y entregas opcionales de resultados. El trabajador
-reutiliza inventario, permisos, motor de acciones, adaptadores, SSH y MariaDB
-sin convertir los canales de mensajería en backends independientes.
+El hito 12 añade consulta y administración controlada de cuentas locales Linux
+y Windows Server. Reutiliza inventario, permisos, motor de acciones,
+adaptadores, SSH, auditoría y selección múltiple sin convertir los canales de
+mensajería en backends independientes.
 
 Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
 un usuario vinculado y servidores activos. El reinicio requiere permiso y una
 confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
-planificado expresamente. Las mutaciones de servicios también exigen permiso,
-confirmación y privilegios remotos limitados. El monitoreo automático, las
-alertas y la programación persistente ya están disponibles. La administración
-de cuentas del sistema corresponde al hito 12.
+planificado expresamente. Las mutaciones de servicios y usuarios exigen
+permiso, confirmación y privilegios remotos limitados. Las cuentas protegidas
+requieren además un permiso y un indicador explícito que no se ofrece desde
+mensajería. La transferencia de archivos corresponde al hito 13 y no forma
+parte de esta entrega.

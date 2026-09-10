@@ -92,6 +92,8 @@ reautoriza al creador y entra por el mismo motor múltiple con canal `sistema`.
   los valores ausentes se representan con `None` dentro del backend.
 - `adaptadores/servicios.py` valida nombres, estados, marcadores y errores de
   servicios con un contrato común para Linux y Windows Server.
+- `adaptadores/usuarios.py` valida el protocolo normalizado de cuentas, grupos,
+  estados, protección y errores antes de exponer cualquier salida remota.
 - `servicios/auditoria.py` registra el actor, la acción, el recurso y el
   resultado dentro de la misma base de datos.
 - `modelos/` define inventario, control de acceso y auditoría. Las relaciones de
@@ -155,8 +157,9 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
 - La salida diagnóstica exige exactamente el marcador y los campos esperados;
   rechaza duplicados, porcentajes fuera de `0..100`, valores no finitos y tiempos
   de actividad no enteros.
-- Cada acción usa un modelo Pydantic con campos adicionales prohibidos. El único
-  parámetro actual es un identificador de proceso entero y acotado.
+- Cada acción usa un modelo Pydantic con campos adicionales prohibidos. Los
+  identificadores, servicios, cuentas y grupos tienen contratos específicos y
+  acotados; ningún campo se convierte en una orden arbitraria.
 - `reiniciar_servidor` exige un permiso exclusivo y confirmación explícita. Se
   programa con un minuto de margen para evitar una desconexión instantánea.
 - Telegram solo acepta conversaciones privadas y resuelve cada interacción por
@@ -176,6 +179,15 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   resultado conserva auditoría por servidor.
 - `consultar_servicios` está separado de `gestionar_servicios`. El operador de
   inventario solo recibe lectura y el administrador recibe las mutaciones.
+- La consulta de usuarios está separada de la gestión y la eliminación. Una
+  excepción sobre cuentas protegidas exige un cuarto permiso dedicado y un
+  indicador booleano estricto; no se expone desde Telegram ni Slack.
+- La creación remota no transporta contraseñas: produce una cuenta deshabilitada
+  que debe recibir su credencial mediante un procedimiento externo antes de
+  habilitarse. Todas las mutaciones requieren confirmación.
+- Los adaptadores identifican cuentas del sistema, la cuenta SSH y miembros de
+  grupos privilegiados. La cuenta que sostiene SSH no puede cambiar de estado
+  ni eliminarse desde Hermes, incluso con la excepción administrativa.
 - La interfaz limita a 30 solicitudes por identidad y minuto y acota a 5 000 las
   identidades conservadas temporalmente por su limitador.
 - El token Telegram es `SecretStr`, se exige solo al habilitar el canal y nunca

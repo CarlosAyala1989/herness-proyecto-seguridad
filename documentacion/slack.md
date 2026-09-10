@@ -4,7 +4,9 @@ Slack es una segunda interfaz del backend común de Hermes. Usa Slack Bolt
 asíncrono mediante Socket Mode: el proceso abre una conexión saliente con
 Slack y no publica un webhook, dominio ni puerto adicional. El canal interpreta
 `/hermes`, pero inventario, permisos, acciones, SSH y auditoría permanecen en
-los mismos servicios utilizados por FastAPI y Telegram.
+los mismos servicios utilizados por FastAPI y Telegram. Desde el hito 12 también
+expone las operaciones comunes de cuentas locales sin incorporar PowerShell ni
+órdenes Linux al canal.
 
 Desde el hito 10, el proceso de monitoreo puede entregar alertas y
 recuperaciones mediante `chat.postMessage`. La identidad debe continuar activa
@@ -118,6 +120,13 @@ Todos los comandos se envían por mensaje directo:
 /hermes iniciar_servicio hermes-prueba.service
 /hermes detener_servicio hermes-prueba.service
 /hermes reiniciar_servicio hermes-prueba.service
+/hermes usuarios
+/hermes crear_usuario hermes_prueba Cuenta de prueba Hermes
+/hermes agregar_grupo hermes_prueba operadores
+/hermes quitar_grupo hermes_prueba operadores
+/hermes bloquear_usuario hermes_prueba
+/hermes desbloquear_usuario hermes_prueba
+/hermes eliminar_usuario hermes_prueba
 /hermes reiniciar
 /hermes cancelar
 ```
@@ -125,8 +134,9 @@ Todos los comandos se envían por mensaje directo:
 La selección individual, por grupo y total tiene el mismo significado que en
 Telegram. Una operación múltiple se ejecuta con la concurrencia acotada del
 backend, presenta un resultado por servidor y conserva los fallos de manera
-independiente. Reinicios y cambios de servicio siempre requieren el botón de
-confirmación y el permiso correspondiente.
+independiente. Reinicios y cambios de servicio o usuario siempre requieren el
+botón de confirmación y el permiso correspondiente. Slack no acepta contraseñas
+ni permite activar la excepción para cuentas protegidas.
 
 El estado conversacional es deliberadamente efímero y se pierde al reiniciar
 el proceso; inventario, usuarios, vínculos, permisos y auditoría sí permanecen

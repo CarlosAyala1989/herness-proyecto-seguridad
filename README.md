@@ -4,11 +4,12 @@ Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
 hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
 de acciones administrativas controladas, diagnóstico, administración de
-servicios, operaciones múltiples, alertas y tareas programadas persistentes.
+servicios, operaciones múltiples, alertas, tareas programadas persistentes y
+administración controlada de cuentas locales remotas.
 
 ## Estado actual
 
-Hitos 1 a 11 completados. Hermes 0.11.0 proporciona:
+Hitos 1 a 12 completados. Hermes 0.12.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -52,19 +53,30 @@ Hitos 1 a 11 completados. Hermes 0.11.0 proporciona:
 - monitoreo periódico concurrente de disponibilidad, CPU, memoria y disco;
 - comprobación de servicios críticos configurables por servidor;
 - alertas persistentes y deduplicadas con registro de recuperación;
-- suscripciones explícitas y entregas reintentables por Telegram y Slack.
+- suscripciones explícitas y entregas reintentables por Telegram y Slack;
 - tareas de fecha única o intervalo fijo persistidas en MariaDB;
 - selección de destinos congelada, reautorización al ejecutar y confirmación
   para acciones sensibles programadas;
 - historial de ocurrencias, cancelación de ejecuciones futuras y protección
   transaccional contra duplicados;
-- notificación opcional de resultados a las identidades activas del creador.
+- notificación opcional de resultados a las identidades activas del creador;
+- consulta normalizada de cuentas locales, estado y grupos en Linux y Windows;
+- creación inicialmente deshabilitada, sin recibir ni persistir contraseñas;
+- cambios de grupo, bloqueo, habilitación y eliminación con confirmación;
+- permisos reforzados para eliminación y cuentas o grupos protegidos;
+- protección de la cuenta SSH operadora, cuentas del sistema y miembros de
+  grupos privilegiados;
+- comandos equivalentes de usuarios en Telegram y Slack, siempre delegados al
+  backend común.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 `obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
-`detener_servicio`, `reiniciar_servicio` y `reiniciar_servidor`. Telegram ya
-reutiliza esas acciones sobre un servidor, un grupo o todos los servidores
-activos desde Telegram y Slack.
+`detener_servicio`, `reiniciar_servicio`, `reiniciar_servidor`,
+`listar_usuarios_sistema`, `crear_usuario_sistema`,
+`cambiar_grupo_usuario_sistema`, `bloquear_usuario_sistema`,
+`desbloquear_usuario_sistema` y `eliminar_usuario_sistema`. Telegram y Slack
+reutilizan esas acciones sobre un servidor, un grupo o todos los servidores
+activos.
 
 ## Requisitos locales
 
@@ -162,3 +174,5 @@ Los umbrales, suscripciones, alertas y proceso periódico se detallan en
 [`documentacion/monitoreo_automatico.md`](documentacion/monitoreo_automatico.md).
 La creación, ejecución, consulta y cancelación de tareas se describe en
 [`documentacion/tareas_programadas.md`](documentacion/tareas_programadas.md).
+La gestión controlada de cuentas locales se describe en
+[`documentacion/usuarios_sistema.md`](documentacion/usuarios_sistema.md).
