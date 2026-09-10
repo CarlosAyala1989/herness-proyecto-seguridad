@@ -118,7 +118,7 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0010 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0011 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
@@ -135,6 +135,8 @@ La novena añade permisos separados para consultar, gestionar y eliminar
 usuarios remotos, además de una autorización reforzada para cuentas protegidas.
 La décima crea las raíces de archivos permitidas y separa los permisos de
 consulta, descarga, carga y administración de rutas.
+La undécima añade plantillas cerradas, aplicaciones administradas, historial de
+despliegues y permisos separados de consulta, gestión, instalación y reversión.
 
 ## 5. Crear el primer administrador
 
@@ -196,7 +198,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -409,12 +411,18 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 13 añade consulta, carga y descarga SFTP sobre raíces permitidas de
-Linux y Windows Server. Reutiliza inventario, permisos, conexión verificada,
-auditoría y mensajería sin convertir los canales en backends independientes.
+El hito 14 añade plantillas cerradas y despliegues de archivo único sobre las
+raíces SFTP del hito anterior. La instalación conserva respaldo, verifica
+SHA-256, reinicia un servicio opcional y permite restaurar el estado previo.
+Reutiliza inventario, permisos, conexión verificada, adaptadores, auditoría y
+mensajería sin convertir los canales en backends independientes.
 
-Las transferencias pueden probarse desde Telegram cuando exista un token, un
-usuario vinculado, un único servidor seleccionado y una raíz registrada. Slack
-requiere además `files:write` para entregar descargas. Los despliegues y las
-plantillas de aplicaciones corresponden al hito 14 y no forman parte de esta
-entrega.
+La prueba automatizada despliega y revierte un archivo sobre un servidor
+AsyncSSH Linux efímero y no modifica el Ubuntu anfitrión. Los recorridos de API,
+Telegram y Slack sustituyen únicamente la red externa. Para una VM Linux o
+Windows Server real deben prepararse OpenSSH, las claves, `known_hosts`, raíces
+SFTP y permisos mínimos descritos en `despliegues.md`; no se afirma esa prueba
+sin las credenciales del laboratorio.
+
+El endurecimiento integral, la revisión final de seguridad y la preparación de
+evidencias completas corresponden al hito 15.

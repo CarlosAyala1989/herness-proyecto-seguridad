@@ -122,5 +122,6 @@ aportado una VM Windows Server ni credenciales de Telegram o Slack, por lo que
 esas comprobaciones externas deben ejecutarse después siguiendo sus guías; no se
 inventan resultados.
 
-Los despliegues, versiones de aplicaciones y reversión pertenecen al hito 14 y
-quedan fuera de esta entrega.
+El hito 14 reutiliza estas mismas raíces y operaciones SFTP para instalar
+artefactos con respaldo y verificación. Consulta `despliegues.md`; la carga o
+descarga manual continúa aplicando todos los controles descritos aquí.

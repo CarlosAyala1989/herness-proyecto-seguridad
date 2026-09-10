@@ -6,10 +6,11 @@ hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
 de acciones administrativas controladas, diagnóstico, administración de
 servicios, operaciones múltiples, alertas, tareas programadas persistentes,
 administración controlada de cuentas locales remotas y transferencias SFTP.
+También dispone de despliegues de archivo único con verificación y reversión.
 
 ## Estado actual
 
-Hitos 1 a 13 completados. Hermes 0.13.0 proporciona:
+Hitos 1 a 14 completados. Hermes 0.14.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -75,7 +76,16 @@ Hitos 1 a 13 completados. Hermes 0.13.0 proporciona:
 - creación exclusiva predeterminada y confirmación expresa para sobrescrituras API;
 - permisos independientes y auditoría por servidor sin registrar contenidos;
 - carga y descarga desde Telegram y consulta y descarga desde Slack, siempre sobre
-  un único servidor seleccionado.
+  un único servidor seleccionado;
+- plantillas cerradas de despliegue por sistema operativo, sin guiones aportados
+  por usuarios;
+- aplicaciones asociadas a inventario, versión vigente e historial persistente;
+- instalación SFTP con respaldo previo, verificación SHA-256 y reinicio opcional
+  de servicios mediante los adaptadores Linux y Windows Server;
+- reversión explícita y restauración automática ante fallos de instalación;
+- permisos separados, bloqueo por aplicación y auditoría de cada resultado;
+- consulta, despliegue y reversión desde Telegram y Slack con confirmaciones
+  efímeras de un solo uso.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 `obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
@@ -186,3 +196,5 @@ La gestión controlada de cuentas locales se describe en
 [`documentacion/usuarios_sistema.md`](documentacion/usuarios_sistema.md).
 La lista blanca de rutas y las transferencias SFTP se explican en
 [`documentacion/archivos.md`](documentacion/archivos.md).
+Las plantillas, versiones, comprobaciones y reversiones se describen en
+[`documentacion/despliegues.md`](documentacion/despliegues.md).

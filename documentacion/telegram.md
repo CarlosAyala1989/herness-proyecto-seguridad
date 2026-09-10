@@ -163,6 +163,10 @@ preparar el inventario y administrar usuarios.
 | `/archivo_info <ruta>` | Consulta tipo, tamaño y modificación mediante SFTP. |
 | `/descargar_archivo <ruta>` | Entrega un archivo de una raíz de lectura permitida. |
 | `/cargar_archivo <ruta>` | Carga sin sobrescribir el documento al que se responde. |
+| `/aplicaciones` | Lista aplicaciones, servidor y versión vigente. |
+| `/estado_aplicacion <id>` | Comprueba archivo, integridad y servicio opcional. |
+| `/desplegar <id> <versión> <ruta>` | Solicita instalar un artefacto remoto. |
+| `/revertir_despliegue <id_app> <id_despliegue>` | Solicita restaurar el estado anterior. |
 | `/identidad` | Ejecuta `obtener_identidad` sobre la selección actual. |
 | `/proceso <id>` | Ejecuta `consultar_proceso` con un identificador acotado. |
 | `/reiniciar` | Solicita una confirmación efímera antes del reinicio. |
@@ -194,6 +198,22 @@ mensaje con `/cargar_archivo /ruta/remota/nombre` y conserva la selección. El b
 rechaza tamaños desconocidos o superiores al límite y nunca reemplaza un archivo
 existente.
 
+Para administrar una aplicación ya preparada mediante la API y
+`despliegues.md`, ejecuta:
+
+```text
+/aplicaciones
+/estado_aplicacion 1
+/desplegar 1 1.0.0 /srv/hermes/artefactos/api-1.0.0.bin
+```
+
+El último comando no escribe de inmediato: muestra botones, fija aplicación,
+versión y ruta, y exige una confirmación no reutilizable. Consulta luego el
+historial por la API. Para recuperar el estado previo, usa el identificador del
+despliegue con `/revertir_despliegue 1 1` y confirma. Ambas operaciones cambian
+archivos reales y pueden reiniciar el servicio de la plantilla; deben probarse
+solo con una aplicación desechable del laboratorio.
+
 Para una prueba múltiple de solo lectura, registra varios destinos de
 laboratorio, asócialos a un grupo y ejecuta:
 
@@ -224,6 +244,8 @@ nunca sobre una cuenta necesaria del anfitrión.
 - Los identificadores de servidor y proceso están acotados antes de convertirlos.
 - Cada confirmación sensible tiene un código aleatorio, queda ligada a su
   acción y selección fija de IDs, caduca y se consume una sola vez.
+- Las confirmaciones de despliegue quedan ligadas a aplicación, versión,
+  artefacto u operación de reversión y se vuelven a autorizar al consumirlas.
 - Los grupos se resuelven de nuevo para las lecturas. Antes de confirmar una
   mutación, sus miembros se fijan para impedir que el alcance se amplíe mientras
   el usuario decide.

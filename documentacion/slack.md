@@ -130,6 +130,10 @@ Todos los comandos se envían por mensaje directo:
 /hermes eliminar_usuario hermes_prueba
 /hermes archivo_info /srv/hermes/intercambio/prueba.txt
 /hermes descargar_archivo /srv/hermes/intercambio/prueba.txt
+/hermes aplicaciones
+/hermes estado_aplicacion 1
+/hermes desplegar 1 1.0.0 /srv/hermes/artefactos/api-1.0.0.bin
+/hermes revertir_despliegue 1 1
 /hermes reiniciar
 /hermes cancelar
 ```
@@ -150,6 +154,12 @@ entrega descargas mediante `files_upload_v2`; no recibe cargas hacia el servidor
 en este hito porque un comando de barra no transporta adjuntos. Las cargas están
 disponibles por la API local y Telegram. El contenido sigue limitado por la
 configuración común y nunca se persiste en MariaDB.
+
+Los artefactos para desplegar también deben cargarse previamente mediante la
+API o Telegram. Slack puede listar aplicaciones, consultar su integridad e
+iniciar un despliegue o una reversión. Las dos mutaciones muestran botones
+caducables de un solo uso y vuelven a comprobar el permiso antes de entrar al
+gestor común. Consulta `despliegues.md` para preparar plantillas y rutas.
 
 ## Auditoría y procesos
 

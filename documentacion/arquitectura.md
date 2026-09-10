@@ -77,12 +77,18 @@ reautoriza al creador y entra por el mismo motor múltiple con canal `sistema`.
 - `monitoreo/motor.py` limita la concurrencia y aísla el fallo de cada destino.
 - `servicios/gestor_tareas.py` valida y congela una selección antes de crear la
   definición, y ofrece consulta y cancelación auditadas.
+- `servicios/gestor_despliegues.py` bloquea una aplicación concreta, respalda su
+  destino, instala por SFTP, verifica SHA-256 y servicio, y restaura el estado
+  anterior ante fallos o una reversión confirmada.
+- `modelos/despliegue.py` separa la plantilla cerrada, su instancia sobre un
+  servidor y el historial persistente de cada versión intentada.
 - `tareas/motor.py` reclama ocurrencias mediante actualización condicional,
   evita repeticiones por restricción única y delega en el motor común.
 - `tareas/notificaciones.py` entrega resúmenes persistentes a las identidades
   activas del creador reutilizando los adaptadores Telegram y Slack.
 - `conexiones/transporte_ssh.py` contiene la conexión AsyncSSH, la doble
-  validación de host, los plazos y la recolección acotada de salida.
+  validación de host, los plazos, la recolección acotada de salida y las
+  operaciones SFTP confinadas.
 - `conexiones/credenciales.py` resuelve referencias de archivo confinadas o el
   socket del agente sin consultar secretos desde MariaDB.
 - `adaptadores/linux.py` y `adaptadores/windows.py` encapsulan las diferencias
@@ -235,6 +241,18 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
 - Los contenidos viven únicamente durante la solicitud y están acotados por
   `HERMES_LIMITE_ARCHIVO_TRANSFERENCIA_BYTES`. MariaDB conserva configuración,
   permisos y auditoría, pero nunca bytes de archivos.
+- Una plantilla de despliegue no contiene comandos configurables: fija
+  plataforma, destino y servicio opcional. Una aplicación solo puede asociarla
+  con un servidor de la misma plataforma y con raíces de lectura y escritura.
+- Cada despliegue bloquea la fila de la aplicación, conserva versión anterior y
+  respaldo con su hash, verifica el contenido instalado por SHA-256 y exige que
+  el servicio opcional termine activo.
+- Un fallo posterior a la escritura inicia una restauración automática. Una
+  reversión manual solo acepta el despliegue completado que representa la
+  versión vigente y siempre requiere confirmación.
+- Telegram y Slack guardan el despliegue pendiente en un desafío aleatorio,
+  caducable y de un solo uso. Al consumirlo, la fachada vuelve a autenticar y
+  autorizar al usuario antes de entrar al mismo gestor usado por FastAPI.
 
 ## Administración futura del Ubuntu anfitrión
 
