@@ -6,7 +6,10 @@ from aplicacion.acciones.errores import ErrorEjecucionAccion, ErrorRespuestaAcci
 from aplicacion.acciones.registro import (
     CodigoAccion,
     ParametrosAccion,
+    ParametrosCambioGrupoUsuarioSistema,
     ParametrosConsultaProceso,
+    ParametrosCrearUsuarioSistema,
+    ParametrosNombreUsuarioSistema,
     ParametrosServicio,
 )
 from aplicacion.adaptadores.acciones import AccionRemotaPreparada
@@ -16,6 +19,7 @@ from aplicacion.adaptadores.servicios import (
     interpretar_resultado_servicio,
 )
 from aplicacion.adaptadores.sistema_operativo import SistemaRemotoDetectado
+from aplicacion.adaptadores.usuarios import ACCIONES_USUARIOS, interpretar_resultado_usuarios
 from aplicacion.conexiones.errores import ErrorSistemaOperativoNoCoincide
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
 from aplicacion.modelos.enumeraciones import SistemaOperativo
@@ -90,6 +94,230 @@ Write-Output "nombre_equipo=$nombre_equipo"
         """Codifica un guion fijo para evitar capas frágiles de comillas."""
 
         return b64encode(guion.encode("utf-16-le")).decode("ascii")
+
+    @staticmethod
+    def _literal_powershell(valor: str) -> str:
+        """Escapa una cadena validada como literal de comillas simples."""
+
+        return "'" + valor.replace("'", "''") + "'"
+
+    @classmethod
+    def _envolver_guion(cls, codigo: CodigoAccion, guion: str) -> AccionRemotaPreparada:
+        return AccionRemotaPreparada(
+            codigo=codigo,
+            comando=(
+                "powershell.exe -NoLogo -NoProfile -NonInteractive "
+                f"-EncodedCommand {cls._codificar_guion_powershell(guion)}"
+            ),
+        )
+
+    @classmethod
+    def _preparar_listado_usuarios(cls) -> AccionRemotaPreparada:
+        guion = r"""
+$ErrorActionPreference = 'Stop'
+if ($null -eq (Get-Command Get-LocalUser -ErrorAction SilentlyContinue)) {
+    Write-Output 'HERMES_ERROR=gestor_usuarios_no_disponible'
+    exit 0
+}
+Write-Output 'HERMES_ACCION=listar_usuarios_sistema'
+$usuario_actual = [Environment]::UserName
+$usuarios = @(Get-LocalUser | Sort-Object -Property Name)
+foreach ($usuario in $usuarios) {
+    $sid = [string]$usuario.SID.Value
+    $partes_sid = $sid.Split('-')
+    $rid = 0
+    [void][int]::TryParse($partes_sid[-1], [ref]$rid)
+    $protegida = ($rid -lt 1000) -or ($usuario.Name -ieq $usuario_actual)
+    $estado = if ($usuario.Enabled) { 'habilitado' } else { 'deshabilitado' }
+    Write-Output ('USUARIO|{0}|{1}|{2}|{3}' -f $usuario.Name, $sid, $estado, $protegida.ToString().ToLowerInvariant())
+    try {
+        $grupos = @(Get-LocalGroup | Where-Object {
+            $miembros = @(Get-LocalGroupMember -Group $_ -ErrorAction Stop)
+            $miembros.SID.Value -contains $sid
+        } | Sort-Object -Property Name)
+        foreach ($grupo in $grupos) {
+            Write-Output ('GRUPO|{0}|{1}' -f $usuario.Name, $grupo.Name)
+        }
+    } catch {}
+}
+"""
+        return cls._envolver_guion(CodigoAccion.LISTAR_USUARIOS_SISTEMA, guion)
+
+    @classmethod
+    def _bloque_comun_usuario(
+        cls,
+        parametros: ParametrosNombreUsuarioSistema,
+        *,
+        proteger_operador: bool,
+    ) -> str:
+        nombre = cls._literal_powershell(parametros.nombre_usuario)
+        autorizar = "$true" if parametros.autorizar_cuenta_protegida else "$false"
+        validar_operador = (
+            """
+if ($nombre_usuario -ieq $usuario_actual) {
+    Write-Output 'HERMES_ERROR=cuenta_operador_ssh'
+    exit 0
+}
+"""
+            if proteger_operador
+            else ""
+        )
+        return f"""
+$ErrorActionPreference = 'Stop'
+$nombre_usuario = {nombre}
+$autorizar_cuenta_protegida = {autorizar}
+if ($null -eq (Get-Command Get-LocalUser -ErrorAction SilentlyContinue)) {{
+    Write-Output 'HERMES_ERROR=gestor_usuarios_no_disponible'
+    exit 0
+}}
+$usuario = Get-LocalUser -Name $nombre_usuario -ErrorAction SilentlyContinue
+if ($null -eq $usuario) {{
+    Write-Output 'HERMES_ERROR=usuario_sistema_no_encontrado'
+    exit 0
+}}
+$sid = [string]$usuario.SID.Value
+$partes_sid = $sid.Split('-')
+$rid = 0
+[void][int]::TryParse($partes_sid[-1], [ref]$rid)
+$usuario_actual = [Environment]::UserName
+$cuenta_protegida = ($rid -lt 1000) -or ($nombre_usuario -ieq $usuario_actual)
+{validar_operador}
+if ($cuenta_protegida -and -not $autorizar_cuenta_protegida) {{
+    Write-Output 'HERMES_ERROR=cuenta_sistema_protegida'
+    exit 0
+}}
+"""
+
+    @classmethod
+    def _preparar_creacion_usuario(
+        cls,
+        parametros: ParametrosCrearUsuarioSistema,
+    ) -> AccionRemotaPreparada:
+        nombre = cls._literal_powershell(parametros.nombre_usuario)
+        nombre_mostrar = cls._literal_powershell(
+            parametros.nombre_mostrar or parametros.nombre_usuario
+        )
+        guion = f"""
+$ErrorActionPreference = 'Stop'
+$nombre_usuario = {nombre}
+$nombre_mostrar = {nombre_mostrar}
+if ($null -eq (Get-Command New-LocalUser -ErrorAction SilentlyContinue)) {{
+    Write-Output 'HERMES_ERROR=gestor_usuarios_no_disponible'
+    exit 0
+}}
+if ($null -ne (Get-LocalUser -Name $nombre_usuario -ErrorAction SilentlyContinue)) {{
+    Write-Output 'HERMES_ERROR=usuario_sistema_ya_existe'
+    exit 0
+}}
+$usuario = New-LocalUser -Name $nombre_usuario -FullName $nombre_mostrar -NoPassword -AccountNeverExpires -Disabled -Description 'Creada por Hermes; credenciales pendientes'
+Write-Output 'HERMES_ACCION=crear_usuario_sistema'
+Write-Output "nombre_usuario=$nombre_usuario"
+Write-Output 'estado=deshabilitado'
+Write-Output 'cuenta_protegida=false'
+Write-Output 'nombre_grupo=no_aplica'
+Write-Output 'operacion_grupo=no_aplica'
+"""
+        return cls._envolver_guion(CodigoAccion.CREAR_USUARIO_SISTEMA, guion)
+
+    @classmethod
+    def _preparar_cambio_grupo(
+        cls,
+        parametros: ParametrosCambioGrupoUsuarioSistema,
+    ) -> AccionRemotaPreparada:
+        comun = cls._bloque_comun_usuario(parametros, proteger_operador=False)
+        grupo = cls._literal_powershell(parametros.nombre_grupo)
+        operacion = parametros.operacion_grupo
+        orden = (
+            "Add-LocalGroupMember -Group $grupo -Member $usuario -ErrorAction Stop"
+            if operacion == "agregar"
+            else "Remove-LocalGroupMember -Group $grupo -Member $usuario "
+            "-Confirm:$false -ErrorAction Stop"
+        )
+        guion = f"""
+{comun}
+$nombre_grupo = {grupo}
+$operacion_grupo = '{operacion}'
+if ($null -eq (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue)) {{
+    Write-Output 'HERMES_ERROR=gestor_usuarios_no_disponible'
+    exit 0
+}}
+$grupo = Get-LocalGroup -Name $nombre_grupo -ErrorAction SilentlyContinue
+if ($null -eq $grupo) {{
+    Write-Output 'HERMES_ERROR=grupo_sistema_no_encontrado'
+    exit 0
+}}
+$sid_grupo = [string]$grupo.SID.Value
+$partes_grupo = $sid_grupo.Split('-')
+$rid_grupo = 0
+[void][int]::TryParse($partes_grupo[-1], [ref]$rid_grupo)
+$grupo_protegido = ($rid_grupo -lt 1000) -or ($nombre_grupo -iin @('Administrators', 'Remote Desktop Users', 'Backup Operators', 'Remote Management Users'))
+if ($grupo_protegido -and -not $autorizar_cuenta_protegida) {{
+    Write-Output 'HERMES_ERROR=cuenta_sistema_protegida'
+    exit 0
+}}
+{orden}
+Write-Output 'HERMES_ACCION=cambiar_grupo_usuario_sistema'
+Write-Output "nombre_usuario=$nombre_usuario"
+Write-Output 'estado=actualizado'
+Write-Output ('cuenta_protegida=' + $cuenta_protegida.ToString().ToLowerInvariant())
+Write-Output "nombre_grupo=$nombre_grupo"
+Write-Output "operacion_grupo=$operacion_grupo"
+"""
+        return cls._envolver_guion(CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA, guion)
+
+    @classmethod
+    def _preparar_estado_o_eliminacion_usuario(
+        cls,
+        codigo: CodigoAccion,
+        parametros: ParametrosNombreUsuarioSistema,
+    ) -> AccionRemotaPreparada:
+        comun = cls._bloque_comun_usuario(parametros, proteger_operador=True)
+        operaciones = {
+            CodigoAccion.BLOQUEAR_USUARIO_SISTEMA: (
+                "Disable-LocalUser -InputObject $usuario",
+                "bloqueado",
+            ),
+            CodigoAccion.DESBLOQUEAR_USUARIO_SISTEMA: (
+                "Enable-LocalUser -InputObject $usuario",
+                "habilitado",
+            ),
+            CodigoAccion.ELIMINAR_USUARIO_SISTEMA: (
+                "Remove-LocalUser -InputObject $usuario -Confirm:$false",
+                "eliminado",
+            ),
+        }
+        orden, estado = operaciones[codigo]
+        guion = f"""
+{comun}
+{orden}
+Write-Output 'HERMES_ACCION={codigo.value}'
+Write-Output "nombre_usuario=$nombre_usuario"
+Write-Output 'estado={estado}'
+Write-Output ('cuenta_protegida=' + $cuenta_protegida.ToString().ToLowerInvariant())
+Write-Output 'nombre_grupo=no_aplica'
+Write-Output 'operacion_grupo=no_aplica'
+"""
+        return cls._envolver_guion(codigo, guion)
+
+    @classmethod
+    def _preparar_accion_usuario(
+        cls,
+        codigo: CodigoAccion,
+        parametros: ParametrosAccion,
+    ) -> AccionRemotaPreparada:
+        if codigo is CodigoAccion.LISTAR_USUARIOS_SISTEMA:
+            return cls._preparar_listado_usuarios()
+        if codigo is CodigoAccion.CREAR_USUARIO_SISTEMA and isinstance(
+            parametros, ParametrosCrearUsuarioSistema
+        ):
+            return cls._preparar_creacion_usuario(parametros)
+        if codigo is CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA and isinstance(
+            parametros, ParametrosCambioGrupoUsuarioSistema
+        ):
+            return cls._preparar_cambio_grupo(parametros)
+        if isinstance(parametros, ParametrosNombreUsuarioSistema):
+            return cls._preparar_estado_o_eliminacion_usuario(codigo, parametros)
+        raise ErrorRespuestaAccionNoValida()
 
     def _preparar_servicio(
         self,
@@ -223,6 +451,8 @@ Write-Output "inicio_automatico=$inicio_automatico"
             )
         elif codigo in ACCIONES_SERVICIO and isinstance(parametros, ParametrosServicio):
             return self._preparar_servicio(codigo, parametros)
+        elif codigo in ACCIONES_USUARIOS:
+            return self._preparar_accion_usuario(codigo, parametros)
         else:
             raise ErrorRespuestaAccionNoValida()
         return AccionRemotaPreparada(codigo=codigo, comando=f'{prefijo}{cuerpo}"')
@@ -231,13 +461,15 @@ Write-Output "inicio_automatico=$inicio_automatico"
         self,
         codigo: CodigoAccion,
         resultado: ResultadoEjecucionRemota,
-    ) -> dict[str, str | int | float | bool | None]:
+    ) -> dict[str, object]:
         """Normaliza la salida PowerShell con los mismos campos que Linux."""
 
         if codigo is CodigoAccion.OBTENER_DIAGNOSTICO:
             return interpretar_diagnostico(resultado)
         if codigo in ACCIONES_SERVICIO:
             return interpretar_resultado_servicio(codigo, resultado)
+        if codigo in ACCIONES_USUARIOS:
+            return interpretar_resultado_usuarios(codigo, resultado)
         if resultado.codigo_salida != 0:
             raise ErrorEjecucionAccion(resultado.codigo_salida)
         lineas = [linea.strip() for linea in resultado.salida.splitlines()]

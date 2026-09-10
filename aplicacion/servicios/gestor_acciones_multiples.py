@@ -34,7 +34,10 @@ from aplicacion.modelos.enumeraciones import (
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
 from aplicacion.servicios.auditoria import ContextoAuditoria, preparar_registro_auditoria
-from aplicacion.servicios.gestor_acciones import ejecutar_accion_servidor
+from aplicacion.servicios.gestor_acciones import (
+    comprobar_permisos_adicionales_accion,
+    ejecutar_accion_servidor,
+)
 from aplicacion.servicios.gestor_conexiones import FabricaTransporteRemoto
 from aplicacion.servicios.gestor_inventario import obtener_grupo
 
@@ -284,7 +287,15 @@ async def ejecutar_accion_multiple(
         definicion.codigo_permiso,
         contexto_auditoria,
     )
-    definicion.validar_parametros(datos.parametros)
+    parametros = definicion.validar_parametros(datos.parametros)
+    await comprobar_permisos_adicionales_accion(
+        sesion,
+        solicitud,
+        usuario,
+        definicion,
+        parametros,
+        contexto_auditoria,
+    )
     if definicion.requiere_confirmacion and not datos.confirmar:
         raise ErrorConfirmacionRequerida()
 

@@ -25,7 +25,7 @@ class ResultadoAccionRespuesta(BaseModel):
     sistema_operativo: SistemaOperativo
     accion: CodigoAccion
     estado: Literal["completada"] = "completada"
-    datos: dict[str, str | int | float | bool | None]
+    datos: dict[str, object]
     duracion_ms: float
 
 
@@ -104,7 +104,7 @@ class ResultadoServidorAccionMultiple(BaseModel):
     nombre_servidor: str | None
     sistema_operativo: SistemaOperativo | None
     estado: Literal["completada", "error"]
-    datos: dict[str, str | int | float | bool | None] | None = None
+    datos: dict[str, object] | None = None
     duracion_ms: float
     codigo_error: str | None = None
     mensaje_error: str | None = None

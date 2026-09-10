@@ -41,5 +41,5 @@ class AdaptadorSistemaOperativo(Protocol):
         self,
         codigo: CodigoAccion,
         resultado: ResultadoEjecucionRemota,
-    ) -> dict[str, str | int | float | bool | None]:
+    ) -> dict[str, object]:
         """Convierte la salida esperada en datos comunes."""

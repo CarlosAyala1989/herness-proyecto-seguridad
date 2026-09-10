@@ -70,3 +70,69 @@ class ErrorGestorServiciosNoDisponible(ErrorHermes):
             codigo="gestor_servicios_no_disponible",
             estado_http=HTTPStatus.NOT_IMPLEMENTED,
         )
+
+
+class ErrorUsuarioSistemaNoEncontrado(ErrorHermes):
+    """Informa que la cuenta local exacta no existe."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El usuario del sistema solicitado no existe en el servidor.",
+            codigo="usuario_sistema_no_encontrado",
+            estado_http=HTTPStatus.NOT_FOUND,
+        )
+
+
+class ErrorUsuarioSistemaYaExiste(ErrorHermes):
+    """Impide sustituir accidentalmente una cuenta existente."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El usuario del sistema ya existe en el servidor.",
+            codigo="usuario_sistema_ya_existe",
+            estado_http=HTTPStatus.CONFLICT,
+        )
+
+
+class ErrorGrupoSistemaNoEncontrado(ErrorHermes):
+    """Informa que el grupo local exacto no existe."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El grupo del sistema solicitado no existe en el servidor.",
+            codigo="grupo_sistema_no_encontrado",
+            estado_http=HTTPStatus.NOT_FOUND,
+        )
+
+
+class ErrorGestorUsuariosNoDisponible(ErrorHermes):
+    """Evita improvisar órdenes en plataformas sin herramientas compatibles."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La administración de usuarios no está disponible en este sistema.",
+            codigo="gestor_usuarios_no_disponible",
+            estado_http=HTTPStatus.NOT_IMPLEMENTED,
+        )
+
+
+class ErrorCuentaSistemaProtegida(ErrorHermes):
+    """Exige autorización reforzada para cuentas o grupos privilegiados."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La operación afecta una cuenta o grupo protegido y requiere autorización explícita.",
+            codigo="cuenta_sistema_protegida",
+            estado_http=HTTPStatus.FORBIDDEN,
+        )
+
+
+class ErrorCuentaOperadorSSH(ErrorHermes):
+    """Impide bloquear o eliminar la sesión usada por Hermes."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "No se puede bloquear ni eliminar la cuenta utilizada por la conexión de Hermes.",
+            codigo="cuenta_operador_ssh",
+            estado_http=HTTPStatus.CONFLICT,
+        )

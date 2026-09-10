@@ -6,7 +6,10 @@ from aplicacion.acciones.errores import ErrorEjecucionAccion, ErrorRespuestaAcci
 from aplicacion.acciones.registro import (
     CodigoAccion,
     ParametrosAccion,
+    ParametrosCambioGrupoUsuarioSistema,
     ParametrosConsultaProceso,
+    ParametrosCrearUsuarioSistema,
+    ParametrosNombreUsuarioSistema,
     ParametrosServicio,
 )
 from aplicacion.adaptadores.acciones import AccionRemotaPreparada
@@ -16,6 +19,7 @@ from aplicacion.adaptadores.servicios import (
     interpretar_resultado_servicio,
 )
 from aplicacion.adaptadores.sistema_operativo import SistemaRemotoDetectado
+from aplicacion.adaptadores.usuarios import ACCIONES_USUARIOS, interpretar_resultado_usuarios
 from aplicacion.conexiones.errores import ErrorSistemaOperativoNoCoincide
 from aplicacion.interfaces.transporte_remoto import ResultadoEjecucionRemota
 from aplicacion.modelos.enumeraciones import SistemaOperativo
@@ -149,6 +153,268 @@ printf 'inicio_automatico=%s\\n' "$inicio_automatico"
             comando=f"LC_ALL=C sh -c {shlex.quote(guion)}",
         )
 
+    @staticmethod
+    def _envolver_guion(guion: str) -> str:
+        return f"LC_ALL=C sh -c {shlex.quote(guion)}"
+
+    @classmethod
+    def _preparar_listado_usuarios(cls) -> AccionRemotaPreparada:
+        guion = r"""
+if ! command -v getent >/dev/null 2>&1 || ! command -v id >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=gestor_usuarios_no_disponible\n'
+    exit 0
+fi
+uid_min=$(awk '$1 == "UID_MIN" { print $2; exit }' /etc/login.defs 2>/dev/null)
+case "$uid_min" in ''|*[!0-9]*) uid_min=1000 ;; esac
+usuario_actual=$(id -un 2>/dev/null)
+printf 'HERMES_ACCION=listar_usuarios_sistema\n'
+getent passwd | while IFS=: read -r nombre _ uid _ _ _ _; do
+    [ -n "$nombre" ] || continue
+    estado=desconocido
+    detalle=$(passwd -S "$nombre" 2>/dev/null) || detalle=
+    set -- $detalle
+    case "${2:-}" in
+        P) estado=habilitado ;;
+        L) estado=bloqueado ;;
+        NP) estado=sin_contrasena ;;
+    esac
+    protegida=false
+    case "$uid" in ''|*[!0-9]*) protegida=true ;; *) [ "$uid" -lt "$uid_min" ] && protegida=true ;; esac
+    [ "$nombre" = "$usuario_actual" ] && protegida=true
+    printf 'USUARIO|%s|%s|%s|%s\n' "$nombre" "$uid" "$estado" "$protegida"
+    grupos=$(id -nG "$nombre" 2>/dev/null) || grupos=
+    for grupo in $grupos; do
+        printf 'GRUPO|%s|%s\n' "$nombre" "$grupo"
+    done
+done
+"""
+        return AccionRemotaPreparada(
+            codigo=CodigoAccion.LISTAR_USUARIOS_SISTEMA,
+            comando=cls._envolver_guion(guion),
+        )
+
+    @staticmethod
+    def _bloque_comun_usuario(
+        nombre_usuario: str,
+        autorizar_cuenta_protegida: bool,
+        *,
+        proteger_operador: bool,
+    ) -> str:
+        nombre = shlex.quote(nombre_usuario)
+        autorizar = "true" if autorizar_cuenta_protegida else "false"
+        validar_operador = (
+            """
+if [ "$nombre_usuario" = "$usuario_actual" ]; then
+    printf 'HERMES_ERROR=cuenta_operador_ssh\\n'
+    exit 0
+fi
+"""
+            if proteger_operador
+            else ""
+        )
+        return f"""
+nombre_usuario={nombre}
+autorizar_cuenta_protegida={autorizar}
+if ! command -v getent >/dev/null 2>&1 || ! command -v id >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=gestor_usuarios_no_disponible\n'
+    exit 0
+fi
+registro_usuario=$(getent passwd "$nombre_usuario" 2>/dev/null) || registro_usuario=
+if [ -z "$registro_usuario" ]; then
+    printf 'HERMES_ERROR=usuario_sistema_no_encontrado\n'
+    exit 0
+fi
+uid_usuario=$(printf '%s\n' "$registro_usuario" | awk -F: '{{ print $3 }}')
+uid_min=$(awk '$1 == "UID_MIN" {{ print $2; exit }}' /etc/login.defs 2>/dev/null)
+case "$uid_min" in ''|*[!0-9]*) uid_min=1000 ;; esac
+usuario_actual=$(id -un 2>/dev/null)
+cuenta_protegida=false
+case "$uid_usuario" in
+    ''|*[!0-9]*) cuenta_protegida=true ;;
+    *) [ "$uid_usuario" -lt "$uid_min" ] && cuenta_protegida=true ;;
+esac
+[ "$nombre_usuario" = "$usuario_actual" ] && cuenta_protegida=true
+{validar_operador}
+if [ "$cuenta_protegida" = true ] && [ "$autorizar_cuenta_protegida" != true ]; then
+    printf 'HERMES_ERROR=cuenta_sistema_protegida\n'
+    exit 0
+fi
+ejecutar_privilegiado() {{
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo -n -- "$@"
+    else
+        return 126
+    fi
+}}
+"""
+
+    @classmethod
+    def _preparar_creacion_usuario(
+        cls,
+        parametros: ParametrosCrearUsuarioSistema,
+    ) -> AccionRemotaPreparada:
+        nombre = shlex.quote(parametros.nombre_usuario)
+        nombre_mostrar = shlex.quote(parametros.nombre_mostrar or parametros.nombre_usuario)
+        guion = f"""
+nombre_usuario={nombre}
+nombre_mostrar={nombre_mostrar}
+if ! command -v getent >/dev/null 2>&1 || ! command -v useradd >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=gestor_usuarios_no_disponible\n'
+    exit 0
+fi
+if getent passwd "$nombre_usuario" >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=usuario_sistema_ya_existe\n'
+    exit 0
+fi
+ejecutar_privilegiado() {{
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo -n -- "$@"
+    else
+        return 126
+    fi
+}}
+ejecutar_privilegiado useradd --create-home --shell /bin/bash --comment "$nombre_mostrar" --expiredate 1 "$nombre_usuario" || exit $?
+printf 'HERMES_ACCION=crear_usuario_sistema\n'
+printf 'nombre_usuario=%s\n' "$nombre_usuario"
+printf 'estado=deshabilitado\n'
+printf 'cuenta_protegida=false\n'
+printf 'nombre_grupo=no_aplica\n'
+printf 'operacion_grupo=no_aplica\n'
+"""
+        return AccionRemotaPreparada(
+            codigo=CodigoAccion.CREAR_USUARIO_SISTEMA,
+            comando=cls._envolver_guion(guion),
+        )
+
+    @classmethod
+    def _preparar_cambio_grupo(
+        cls,
+        parametros: ParametrosCambioGrupoUsuarioSistema,
+    ) -> AccionRemotaPreparada:
+        comun = cls._bloque_comun_usuario(
+            parametros.nombre_usuario,
+            parametros.autorizar_cuenta_protegida,
+            proteger_operador=False,
+        )
+        grupo = shlex.quote(parametros.nombre_grupo)
+        operacion = parametros.operacion_grupo
+        herramienta = "usermod" if operacion == "agregar" else "gpasswd"
+        orden = (
+            'ejecutar_privilegiado usermod --append --groups "$nombre_grupo" '
+            '"$nombre_usuario" || exit $?'
+            if operacion == "agregar"
+            else 'ejecutar_privilegiado gpasswd --delete "$nombre_usuario" '
+            '"$nombre_grupo" >/dev/null || exit $?'
+        )
+        guion = f"""
+{comun}
+nombre_grupo={grupo}
+operacion_grupo={operacion}
+if ! command -v {herramienta} >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=gestor_usuarios_no_disponible\n'
+    exit 0
+fi
+registro_grupo=$(getent group "$nombre_grupo" 2>/dev/null) || registro_grupo=
+if [ -z "$registro_grupo" ]; then
+    printf 'HERMES_ERROR=grupo_sistema_no_encontrado\n'
+    exit 0
+fi
+gid_grupo=$(printf '%s\n' "$registro_grupo" | awk -F: '{{ print $3 }}')
+gid_min=$(awk '$1 == "GID_MIN" {{ print $2; exit }}' /etc/login.defs 2>/dev/null)
+case "$gid_min" in ''|*[!0-9]*) gid_min=1000 ;; esac
+grupo_protegido=false
+case "$gid_grupo" in
+    ''|*[!0-9]*) grupo_protegido=true ;;
+    *) [ "$gid_grupo" -lt "$gid_min" ] && grupo_protegido=true ;;
+esac
+case "$nombre_grupo" in sudo|wheel|root|adm|shadow|docker) grupo_protegido=true ;; esac
+if [ "$grupo_protegido" = true ] && [ "$autorizar_cuenta_protegida" != true ]; then
+    printf 'HERMES_ERROR=cuenta_sistema_protegida\n'
+    exit 0
+fi
+{orden}
+printf 'HERMES_ACCION=cambiar_grupo_usuario_sistema\n'
+printf 'nombre_usuario=%s\n' "$nombre_usuario"
+printf 'estado=actualizado\n'
+printf 'cuenta_protegida=%s\n' "$cuenta_protegida"
+printf 'nombre_grupo=%s\n' "$nombre_grupo"
+printf 'operacion_grupo=%s\n' "$operacion_grupo"
+"""
+        return AccionRemotaPreparada(
+            codigo=CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA,
+            comando=cls._envolver_guion(guion),
+        )
+
+    @classmethod
+    def _preparar_estado_o_eliminacion_usuario(
+        cls,
+        codigo: CodigoAccion,
+        parametros: ParametrosNombreUsuarioSistema,
+    ) -> AccionRemotaPreparada:
+        comun = cls._bloque_comun_usuario(
+            parametros.nombre_usuario,
+            parametros.autorizar_cuenta_protegida,
+            proteger_operador=True,
+        )
+        operaciones = {
+            CodigoAccion.BLOQUEAR_USUARIO_SISTEMA: (
+                "usermod",
+                'ejecutar_privilegiado usermod --lock --expiredate 1 "$nombre_usuario" || exit $?',
+                "bloqueado",
+            ),
+            CodigoAccion.DESBLOQUEAR_USUARIO_SISTEMA: (
+                "usermod",
+                'ejecutar_privilegiado usermod --unlock --expiredate "" '
+                '"$nombre_usuario" || exit $?',
+                "habilitado",
+            ),
+            CodigoAccion.ELIMINAR_USUARIO_SISTEMA: (
+                "userdel",
+                'ejecutar_privilegiado userdel --remove "$nombre_usuario" || exit $?',
+                "eliminado",
+            ),
+        }
+        herramienta, orden, estado = operaciones[codigo]
+        guion = f"""
+{comun}
+if ! command -v {herramienta} >/dev/null 2>&1; then
+    printf 'HERMES_ERROR=gestor_usuarios_no_disponible\n'
+    exit 0
+fi
+{orden}
+printf 'HERMES_ACCION={codigo.value}\n'
+printf 'nombre_usuario=%s\n' "$nombre_usuario"
+printf 'estado={estado}\n'
+printf 'cuenta_protegida=%s\n' "$cuenta_protegida"
+printf 'nombre_grupo=no_aplica\n'
+printf 'operacion_grupo=no_aplica\n'
+"""
+        return AccionRemotaPreparada(codigo=codigo, comando=cls._envolver_guion(guion))
+
+    @classmethod
+    def _preparar_accion_usuario(
+        cls,
+        codigo: CodigoAccion,
+        parametros: ParametrosAccion,
+    ) -> AccionRemotaPreparada:
+        if codigo is CodigoAccion.LISTAR_USUARIOS_SISTEMA:
+            return cls._preparar_listado_usuarios()
+        if codigo is CodigoAccion.CREAR_USUARIO_SISTEMA and isinstance(
+            parametros, ParametrosCrearUsuarioSistema
+        ):
+            return cls._preparar_creacion_usuario(parametros)
+        if codigo is CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA and isinstance(
+            parametros, ParametrosCambioGrupoUsuarioSistema
+        ):
+            return cls._preparar_cambio_grupo(parametros)
+        if isinstance(parametros, ParametrosNombreUsuarioSistema):
+            return cls._preparar_estado_o_eliminacion_usuario(codigo, parametros)
+        raise ErrorRespuestaAccionNoValida()
+
     def interpretar_deteccion(
         self,
         resultado: ResultadoEjecucionRemota,
@@ -193,6 +459,8 @@ printf 'inicio_automatico=%s\\n' "$inicio_automatico"
             comando = f"LC_ALL=C sh -c {shlex.quote(self.guion_diagnostico)}"
         elif codigo in ACCIONES_SERVICIO and isinstance(parametros, ParametrosServicio):
             return self._preparar_servicio(codigo, parametros)
+        elif codigo in ACCIONES_USUARIOS:
+            return self._preparar_accion_usuario(codigo, parametros)
         else:
             raise ErrorRespuestaAccionNoValida()
         return AccionRemotaPreparada(codigo=codigo, comando=comando)
@@ -201,13 +469,15 @@ printf 'inicio_automatico=%s\\n' "$inicio_automatico"
         self,
         codigo: CodigoAccion,
         resultado: ResultadoEjecucionRemota,
-    ) -> dict[str, str | int | float | bool | None]:
+    ) -> dict[str, object]:
         """Normaliza marcadores emitidos únicamente por comandos autorizados."""
 
         if codigo is CodigoAccion.OBTENER_DIAGNOSTICO:
             return interpretar_diagnostico(resultado)
         if codigo in ACCIONES_SERVICIO:
             return interpretar_resultado_servicio(codigo, resultado)
+        if codigo in ACCIONES_USUARIOS:
+            return interpretar_resultado_usuarios(codigo, resultado)
         if resultado.codigo_salida != 0:
             raise ErrorEjecucionAccion(resultado.codigo_salida)
         lineas = [linea.strip() for linea in resultado.salida.splitlines()]

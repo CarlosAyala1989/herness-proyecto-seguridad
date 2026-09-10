@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aplicacion.acciones.errores import ErrorParametrosAccion
 from aplicacion.acciones.registro import (
     DefinicionAccion,
+    ParametrosAccion,
     listar_definiciones_acciones,
     obtener_definicion_accion,
 )
@@ -28,6 +29,26 @@ from aplicacion.servicios.gestor_conexiones import (
 from aplicacion.servicios.gestor_inventario import obtener_servidor
 
 
+async def comprobar_permisos_adicionales_accion(
+    sesion: AsyncSession,
+    solicitud: Request | None,
+    usuario: Usuario,
+    definicion: DefinicionAccion,
+    parametros: ParametrosAccion,
+    contexto_auditoria: ContextoAuditoria | None = None,
+) -> None:
+    """Aplica permisos reforzados derivados de parámetros ya validados."""
+
+    for codigo_permiso in definicion.obtener_permisos_adicionales(parametros):
+        await comprobar_permiso_usuario(
+            sesion,
+            solicitud,
+            usuario,
+            codigo_permiso,
+            contexto_auditoria,
+        )
+
+
 def listar_acciones_para_usuario(usuario: Usuario) -> list[AccionDisponibleRespuesta]:
     """Filtra ayuda según los permisos persistentes del usuario."""
 
@@ -40,6 +61,7 @@ def listar_acciones_para_usuario(usuario: Usuario) -> list[AccionDisponibleRespu
         )
         for definicion in listar_definiciones_acciones()
         if definicion.codigo_permiso in permisos
+        and set(definicion.codigos_permisos_adicionales).issubset(permisos)
     ]
 
 
@@ -116,6 +138,15 @@ async def ejecutar_accion_servidor(
             "Parámetros de acción rechazados.",
         )
         raise
+
+    await comprobar_permisos_adicionales_accion(
+        sesion,
+        solicitud,
+        usuario,
+        definicion,
+        parametros,
+        contexto_auditoria,
+    )
 
     if definicion.requiere_confirmacion and not datos_solicitud.confirmar:
         await _auditar_resultado(

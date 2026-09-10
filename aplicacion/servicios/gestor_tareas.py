@@ -24,6 +24,7 @@ from aplicacion.modelos.servidor import Servidor
 from aplicacion.modelos.tarea_programada import EjecucionTarea, TareaProgramada
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
 from aplicacion.servicios.auditoria import preparar_registro_auditoria
+from aplicacion.servicios.gestor_acciones import comprobar_permisos_adicionales_accion
 from aplicacion.servicios.gestor_acciones_multiples import resolver_objetivos_accion_multiple
 
 
@@ -48,6 +49,13 @@ async def crear_tarea_programada(
         definicion.codigo_permiso,
     )
     parametros = definicion.validar_parametros(datos.parametros)
+    await comprobar_permisos_adicionales_accion(
+        sesion,
+        solicitud,
+        usuario,
+        definicion,
+        parametros,
+    )
     if definicion.requiere_confirmacion and not datos.confirmar:
         raise ErrorConfirmacionRequerida()
 

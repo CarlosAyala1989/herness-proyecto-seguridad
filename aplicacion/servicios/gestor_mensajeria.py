@@ -17,7 +17,10 @@ from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import CanalAuditoria, TipoCanalMensajeria
 from aplicacion.seguridad.autenticacion import comprobar_permiso_usuario
 from aplicacion.servicios.auditoria import ContextoAuditoria
-from aplicacion.servicios.gestor_acciones import ejecutar_accion_servidor
+from aplicacion.servicios.gestor_acciones import (
+    comprobar_permisos_adicionales_accion,
+    ejecutar_accion_servidor,
+)
 from aplicacion.servicios.gestor_acciones_multiples import (
     ejecutar_accion_multiple,
     resolver_objetivos_accion_multiple,
@@ -257,7 +260,17 @@ class GestorMensajeria:
                 definicion.codigo_permiso,
                 contexto,
             )
-            definicion.validar_parametros((datos or SolicitudEjecucionAccion()).parametros)
+            parametros = definicion.validar_parametros(
+                (datos or SolicitudEjecucionAccion()).parametros
+            )
+            await comprobar_permisos_adicionales_accion(
+                sesion,
+                None,
+                usuario,
+                definicion,
+                parametros,
+                contexto,
+            )
             servidor = await obtener_servidor(sesion, id_servidor)
             if not servidor.activo:
                 raise ErrorServidorInactivo()
@@ -283,7 +296,15 @@ class GestorMensajeria:
                 definicion.codigo_permiso,
                 contexto,
             )
-            definicion.validar_parametros(datos.parametros)
+            parametros = definicion.validar_parametros(datos.parametros)
+            await comprobar_permisos_adicionales_accion(
+                sesion,
+                None,
+                usuario,
+                definicion,
+                parametros,
+                contexto,
+            )
             objetivos = await resolver_objetivos_accion_multiple(
                 sesion,
                 datos.seleccion,
