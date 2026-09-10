@@ -648,8 +648,10 @@ async def consultar_estado_aplicacion(
     finally:
         await transporte.cerrar()
     operativa = (
-        archivo_disponible
-        and integridad is not False
+        aplicacion.version_actual is not None
+        and despliegue is not None
+        and archivo_disponible
+        and integridad is True
         and (plantilla.nombre_servicio is None or estado_servicio == "activo")
     )
     estado = (

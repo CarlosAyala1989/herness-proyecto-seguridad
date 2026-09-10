@@ -284,6 +284,12 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         assert respuesta_aplicacion.status_code == 201
         id_aplicacion = respuesta_aplicacion.json()["id_aplicacion_administrada"]
         raiz_despliegue = f"/api/v1/aplicaciones-administradas/{id_aplicacion}"
+        TransporteDespliegueSimulado.archivos[destino] = b"archivo no gestionado"
+
+        estado_inicial = await cliente.get(f"{raiz_despliegue}/estado", auth=credencial_auditor)
+        assert estado_inicial.status_code == 200
+        assert estado_inicial.json()["estado"] == "no_desplegada"
+        assert estado_inicial.json()["integridad_verificada"] is None
 
         for ruta, contenido in (
             (artefacto_v1, b"version uno"),
