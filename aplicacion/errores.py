@@ -194,6 +194,39 @@ class ErrorArchivoRemotoNoCompatible(ErrorHermes):
         )
 
 
+class ErrorPlantillaDespliegueIncompatible(ErrorHermes):
+    """Impide asociar procedimientos propios de otra plataforma o ruta."""
+
+    def __init__(self, mensaje: str = "La plantilla no es compatible con el servidor.") -> None:
+        super().__init__(
+            mensaje,
+            codigo="plantilla_despliegue_incompatible",
+            estado_http=HTTPStatus.CONFLICT,
+        )
+
+
+class ErrorDespliegueNoRevertible(ErrorHermes):
+    """Indica que el despliegue no representa el estado vigente recuperable."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El despliegue no puede revertirse desde el estado actual.",
+            codigo="despliegue_no_revertible",
+            estado_http=HTTPStatus.CONFLICT,
+        )
+
+
+class ErrorAplicacionNoOperativa(ErrorHermes):
+    """Señala que la verificación posterior no confirmó un estado saludable."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La aplicación no superó la verificación operativa.",
+            codigo="aplicacion_no_operativa",
+            estado_http=HTTPStatus.BAD_GATEWAY,
+        )
+
+
 def _identificador_solicitud(solicitud: Request) -> str:
     return getattr(solicitud.state, "identificador_solicitud", "no_disponible")
 

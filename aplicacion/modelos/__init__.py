@@ -2,6 +2,11 @@
 
 from aplicacion.modelos.acceso import Permiso, Rol, Usuario
 from aplicacion.modelos.base import ModeloBase
+from aplicacion.modelos.despliegue import (
+    AplicacionAdministrada,
+    DespliegueAplicacion,
+    PlantillaDespliegue,
+)
 from aplicacion.modelos.grupo_servidor import GrupoServidor
 from aplicacion.modelos.identidad_mensajeria import IdentidadMensajeria
 from aplicacion.modelos.monitoreo import (
@@ -22,6 +27,9 @@ from aplicacion.modelos.tarea_programada import (
 
 __all__ = [
     "GrupoServidor",
+    "AplicacionAdministrada",
+    "DespliegueAplicacion",
+    "PlantillaDespliegue",
     "IdentidadMensajeria",
     "Alerta",
     "ConfiguracionMonitoreoServidor",

@@ -301,6 +301,40 @@ class TransporteSSHAsync:
         except (asyncssh.Error, OSError):
             raise ErrorServidorSSHNoDisponible() from None
 
+    async def eliminar_archivo(
+        self,
+        ruta_remota: str,
+        rutas_permitidas: tuple[str, ...],
+        tiempo_limite_segundos: float,
+    ) -> None:
+        """Elimina únicamente un archivo regular dentro de una raíz canónica."""
+
+        try:
+            async with asyncio.timeout(tiempo_limite_segundos):
+                conexion = await self._conectar()
+                async with conexion.start_sftp_client() as cliente:
+                    ruta_canonica = await self._resolver_ruta_existente_autorizada(
+                        cliente, ruta_remota, rutas_permitidas
+                    )
+                    atributos = await cliente.lstat(ruta_canonica)
+                    if atributos.type != asyncssh.FILEXFER_TYPE_REGULAR:
+                        raise ErrorArchivoRemotoNoCompatible(
+                            "Solo se permite eliminar un archivo regular durante una reversión."
+                        )
+                    await cliente.remove(ruta_canonica)
+        except TimeoutError:
+            raise ErrorTiempoEsperaSSH() from None
+        except ErrorHermes:
+            raise
+        except asyncssh.SFTPNoSuchFile:
+            raise ErrorRecursoNoEncontrado("archivo remoto") from None
+        except asyncssh.SFTPPermissionDenied:
+            raise ErrorArchivoRemotoNoCompatible(
+                "El servidor rechazó la eliminación del archivo remoto."
+            ) from None
+        except (asyncssh.Error, OSError):
+            raise ErrorServidorSSHNoDisponible() from None
+
     async def _resolver_ruta_existente_autorizada(
         self,
         cliente: asyncssh.SFTPClient,

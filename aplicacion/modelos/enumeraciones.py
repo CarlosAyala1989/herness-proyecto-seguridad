@@ -52,6 +52,7 @@ class TipoRecursoAuditoria(StrEnum):
     ASOCIACION = "asociacion"
     AUTENTICACION = "autenticacion"
     TAREA = "tarea"
+    APLICACION = "aplicacion"
 
 
 class TipoAlerta(StrEnum):
@@ -118,3 +119,18 @@ class EstadoNotificacionTarea(StrEnum):
     PENDIENTE = "pendiente"
     ENVIADA = "enviada"
     FALLIDA = "fallida"
+
+
+class TipoPlantillaDespliegue(StrEnum):
+    """Procedimientos cerrados que puede ejecutar el motor de despliegues."""
+
+    ARCHIVO_UNICO = "archivo_unico"
+
+
+class EstadoDespliegue(StrEnum):
+    """Ciclo de vida persistente de una instalación de aplicación."""
+
+    EN_PROGRESO = "en_progreso"
+    COMPLETADO = "completado"
+    FALLIDO = "fallido"
+    REVERTIDO = "revertido"

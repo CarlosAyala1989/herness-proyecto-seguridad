@@ -69,5 +69,13 @@ class TransporteRemoto(Protocol):
     ) -> bool:
         """Carga contenido y devuelve si reemplazó un archivo existente."""
 
+    async def eliminar_archivo(
+        self,
+        ruta_remota: str,
+        rutas_permitidas: tuple[str, ...],
+        tiempo_limite_segundos: float,
+    ) -> None:
+        """Elimina un archivo regular confinado a una raíz de escritura."""
+
     async def cerrar(self) -> None:
         """Libera la conexión y sus recursos."""

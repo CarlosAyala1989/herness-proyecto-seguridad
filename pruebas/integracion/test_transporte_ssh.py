@@ -19,7 +19,11 @@ from aplicacion.conexiones.errores import (
 )
 from aplicacion.conexiones.transporte_ssh import TransporteSSHAsync
 from aplicacion.configuracion import Configuracion
-from aplicacion.errores import ErrorConflictoDatos, ErrorRutaRemotaNoPermitida
+from aplicacion.errores import (
+    ErrorConflictoDatos,
+    ErrorRecursoNoEncontrado,
+    ErrorRutaRemotaNoPermitida,
+)
 from aplicacion.modelos.enumeraciones import SistemaOperativo, TipoCredencialConexion
 from aplicacion.modelos.servidor import Servidor
 
@@ -272,6 +276,11 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
             await transporte.consultar_informacion_archivo(
                 "/intercambio/enlace_fuera", ("/intercambio",), 2
             )
+        await transporte.eliminar_archivo("/intercambio/prueba.txt", ("/intercambio",), 2)
+        with pytest.raises(ErrorRecursoNoEncontrado):
+            await transporte.consultar_informacion_archivo(
+                "/intercambio/prueba.txt", ("/intercambio",), 2
+            )
         await transporte.cerrar()
 
     assert reemplazado is False
@@ -280,6 +289,4 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
     assert informacion.tamano_bytes == len(b"contenido seguro de prueba")
     assert informacion_descarga.nombre_archivo == "prueba.txt"
     assert contenido == b"contenido seguro de prueba"
-    assert (laboratorio.raiz_sftp / "intercambio" / "prueba.txt").read_bytes() == (
-        b"contenido reemplazado"
-    )
+    assert not (laboratorio.raiz_sftp / "intercambio" / "prueba.txt").exists()

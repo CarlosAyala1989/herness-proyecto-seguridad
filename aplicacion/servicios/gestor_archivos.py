@@ -122,7 +122,7 @@ async def eliminar_ruta_archivo(
     await sesion.commit()
 
 
-def _resolver_rutas_habilitadas(
+def resolver_rutas_habilitadas(
     servidor: Servidor,
     ruta_remota: str,
     *,
@@ -182,7 +182,7 @@ async def consultar_informacion_archivo(
         raise ErrorServidorInactivo()
     transporte = fabrica_transporte(servidor)
     try:
-        normalizada, rutas = _resolver_rutas_habilitadas(servidor, ruta_remota, escritura=False)
+        normalizada, rutas = resolver_rutas_habilitadas(servidor, ruta_remota, escritura=False)
         informacion = await transporte.consultar_informacion_archivo(
             normalizada,
             rutas,
@@ -242,7 +242,7 @@ async def descargar_archivo(
         raise ErrorServidorInactivo()
     transporte = fabrica_transporte(servidor)
     try:
-        normalizada, rutas = _resolver_rutas_habilitadas(servidor, ruta_remota, escritura=False)
+        normalizada, rutas = resolver_rutas_habilitadas(servidor, ruta_remota, escritura=False)
         informacion, contenido = await transporte.descargar_archivo(
             normalizada,
             rutas,
@@ -300,7 +300,7 @@ async def cargar_archivo(
     try:
         if len(contenido) > configuracion.limite_archivo_transferencia_bytes:
             raise ErrorLimiteArchivoExcedido(configuracion.limite_archivo_transferencia_bytes)
-        normalizada, rutas = _resolver_rutas_habilitadas(servidor, ruta_remota, escritura=True)
+        normalizada, rutas = resolver_rutas_habilitadas(servidor, ruta_remota, escritura=True)
         reemplazado = await transporte.cargar_archivo(
             normalizada,
             contenido,

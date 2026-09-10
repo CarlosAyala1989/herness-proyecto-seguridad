@@ -19,6 +19,7 @@ from aplicacion.rutas.acciones import enrutador as enrutador_acciones
 from aplicacion.rutas.archivos import enrutador as enrutador_archivos
 from aplicacion.rutas.auditoria import enrutador as enrutador_auditoria
 from aplicacion.rutas.conexiones import enrutador as enrutador_conexiones
+from aplicacion.rutas.despliegues import enrutador as enrutador_despliegues
 from aplicacion.rutas.inventario import enrutador as enrutador_inventario
 from aplicacion.rutas.monitoreo import enrutador as enrutador_monitoreo
 from aplicacion.rutas.salud import enrutador as enrutador_salud
@@ -98,6 +99,7 @@ def crear_aplicacion(
     aplicacion.include_router(enrutador_monitoreo)
     aplicacion.include_router(enrutador_tareas)
     aplicacion.include_router(enrutador_archivos)
+    aplicacion.include_router(enrutador_despliegues)
     return aplicacion
 
 
