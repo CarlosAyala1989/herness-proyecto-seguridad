@@ -160,6 +160,9 @@ preparar el inventario y administrar usuarios.
 | `/bloquear_usuario <cuenta>` | Solicita bloquear o deshabilitar una cuenta. |
 | `/desbloquear_usuario <cuenta>` | Solicita desbloquear o habilitar una cuenta. |
 | `/eliminar_usuario <cuenta>` | Solicita eliminar una cuenta local. |
+| `/archivo_info <ruta>` | Consulta tipo, tamaño y modificación mediante SFTP. |
+| `/descargar_archivo <ruta>` | Entrega un archivo de una raíz de lectura permitida. |
+| `/cargar_archivo <ruta>` | Carga sin sobrescribir el documento al que se responde. |
 | `/identidad` | Ejecuta `obtener_identidad` sobre la selección actual. |
 | `/proceso <id>` | Ejecuta `consultar_proceso` con un identificador acotado. |
 | `/reiniciar` | Solicita una confirmación efímera antes del reinicio. |
@@ -183,6 +186,13 @@ Con el bot, MariaDB, OpenSSH y el agente activos:
 8. Envía `/usuarios` y comprueba las cuentas sin realizar cambios.
 9. Consulta `/api/v1/auditoria` desde la API local y verifica que el canal sea
    `telegram`.
+
+Para transferir un archivo, selecciona un único servidor y registra antes una
+raíz siguiendo `archivos.md`. `/archivo_info` y `/descargar_archivo` reciben la
+ruta completa. Para cargar, envía primero un documento al chat, responde a ese
+mensaje con `/cargar_archivo /ruta/remota/nombre` y conserva la selección. El bot
+rechaza tamaños desconocidos o superiores al límite y nunca reemplaza un archivo
+existente.
 
 Para una prueba múltiple de solo lectura, registra varios destinos de
 laboratorio, asócialos a un grupo y ejecuta:

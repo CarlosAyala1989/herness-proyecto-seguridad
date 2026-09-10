@@ -16,6 +16,7 @@ oauth_config:
     bot:
       - commands
       - chat:write
+      - files:write
 settings:
   interactivity:
     is_enabled: true

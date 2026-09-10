@@ -445,7 +445,9 @@ class InterfazTelegram(CanalMensajeria):
                 acceso[0], acceso[1], id_servidor, ruta
             )
         except ErrorHermes as error:
-            await self._responder(actualizacion, f"No fue posible consultar el archivo: {error.mensaje}")
+            await self._responder(
+                actualizacion, f"No fue posible consultar el archivo: {error.mensaje}"
+            )
             return
         modificado = (
             informacion.modificado_en.isoformat()
@@ -482,11 +484,11 @@ class InterfazTelegram(CanalMensajeria):
             return
         acceso, id_servidor = preparado
         try:
-            descarga = await self._gestor.descargar_archivo(
-                acceso[0], acceso[1], id_servidor, ruta
-            )
+            descarga = await self._gestor.descargar_archivo(acceso[0], acceso[1], id_servidor, ruta)
         except ErrorHermes as error:
-            await self._responder(actualizacion, f"No fue posible descargar el archivo: {error.mensaje}")
+            await self._responder(
+                actualizacion, f"No fue posible descargar el archivo: {error.mensaje}"
+            )
             return
         mensaje = actualizacion.effective_message
         if mensaje is None:
@@ -540,7 +542,9 @@ class InterfazTelegram(CanalMensajeria):
                 acceso[0], acceso[1], id_servidor, ruta, contenido
             )
         except ErrorHermes as error:
-            await self._responder(actualizacion, f"No fue posible cargar el archivo: {error.mensaje}")
+            await self._responder(
+                actualizacion, f"No fue posible cargar el archivo: {error.mensaje}"
+            )
             return
         await self._responder(
             actualizacion,

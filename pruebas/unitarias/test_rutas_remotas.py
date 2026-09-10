@@ -13,8 +13,16 @@ from aplicacion.seguridad.rutas_remotas import (
 @pytest.mark.parametrize(
     ("ruta", "sistema", "esperada"),
     [
-        ("/srv/hermes/intercambio/archivo.txt", SistemaOperativo.LINUX, "/srv/hermes/intercambio/archivo.txt"),
-        (r"C:\Hermes\Intercambio\archivo.txt", SistemaOperativo.WINDOWS_SERVER, "C:/Hermes/Intercambio/archivo.txt"),
+        (
+            "/srv/hermes/intercambio/archivo.txt",
+            SistemaOperativo.LINUX,
+            "/srv/hermes/intercambio/archivo.txt",
+        ),
+        (
+            r"C:\Hermes\Intercambio\archivo.txt",
+            SistemaOperativo.WINDOWS_SERVER,
+            "C:/Hermes/Intercambio/archivo.txt",
+        ),
     ],
 )
 def test_normaliza_rutas_absolutas_por_plataforma(

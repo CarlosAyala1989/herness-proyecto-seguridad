@@ -61,6 +61,9 @@ async def _crear_laboratorio_ssh(tmp_path: Path) -> AsyncIterator[LaboratorioSSH
     ruta_hosts = tmp_path / "hosts_conocidos"
     raiz_sftp = tmp_path / "raiz_sftp"
     (raiz_sftp / "intercambio").mkdir(parents=True)
+    (raiz_sftp / "fuera").mkdir()
+    (raiz_sftp / "fuera" / "secreto.txt").write_text("secreto", encoding="utf-8")
+    (raiz_sftp / "intercambio" / "enlace_fuera").symlink_to("../fuera/secreto.txt")
     ruta_host.write_bytes(clave_host.export_private_key())
     ruta_cliente.write_bytes(clave_cliente.export_private_key())
     ruta_autorizadas.write_bytes(clave_cliente.export_public_key())
@@ -73,9 +76,7 @@ async def _crear_laboratorio_ssh(tmp_path: Path) -> AsyncIterator[LaboratorioSSH
         server_host_keys=[str(ruta_host)],
         authorized_client_keys=str(ruta_autorizadas),
         process_factory=_atender_proceso,
-        sftp_factory=lambda canal: asyncssh.SFTPServer(
-            canal, chroot=os.fsencode(raiz_sftp)
-        ),
+        sftp_factory=lambda canal: asyncssh.SFTPServer(canal, chroot=os.fsencode(raiz_sftp)),
         encoding=None,
     )
     puerto = servidor.get_port()
@@ -266,8 +267,10 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
             True,
         )
         with pytest.raises(ErrorRutaRemotaNoPermitida):
+            await transporte.consultar_informacion_archivo("/fuera.txt", ("/intercambio",), 2)
+        with pytest.raises(ErrorRutaRemotaNoPermitida):
             await transporte.consultar_informacion_archivo(
-                "/fuera.txt", ("/intercambio",), 2
+                "/intercambio/enlace_fuera", ("/intercambio",), 2
             )
         await transporte.cerrar()
 

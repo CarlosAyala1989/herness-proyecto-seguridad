@@ -4,12 +4,12 @@ Hermes es una plataforma centralizada de administración de servidores Linux y
 Windows Server mediante interfaces de mensajería. El proyecto se construye por
 hitos y actualmente dispone de inventario, seguridad, transporte SSH, un motor
 de acciones administrativas controladas, diagnóstico, administración de
-servicios, operaciones múltiples, alertas, tareas programadas persistentes y
-administración controlada de cuentas locales remotas.
+servicios, operaciones múltiples, alertas, tareas programadas persistentes,
+administración controlada de cuentas locales remotas y transferencias SFTP.
 
 ## Estado actual
 
-Hitos 1 a 12 completados. Hermes 0.12.0 proporciona:
+Hitos 1 a 13 completados. Hermes 0.13.0 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;
@@ -68,6 +68,14 @@ Hitos 1 a 12 completados. Hermes 0.12.0 proporciona:
   grupos privilegiados;
 - comandos equivalentes de usuarios en Telegram y Slack, siempre delegados al
   backend común.
+- raíces de archivos permitidas por servidor, separadas para lectura y escritura;
+- validación de rutas absolutas Linux y Windows Server y comprobación canónica
+  remota para impedir escapes y enlaces hacia ubicaciones externas;
+- consulta, carga y descarga SFTP con plazo, bloques y tamaño máximo configurables;
+- creación exclusiva predeterminada y confirmación expresa para sobrescrituras API;
+- permisos independientes y auditoría por servidor sin registrar contenidos;
+- carga y descarga desde Telegram y consulta y descarga desde Slack, siempre sobre
+  un único servidor seleccionado.
 
 Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 `obtener_diagnostico`, `consultar_servicio`, `iniciar_servicio`,
@@ -176,3 +184,5 @@ La creación, ejecución, consulta y cancelación de tareas se describe en
 [`documentacion/tareas_programadas.md`](documentacion/tareas_programadas.md).
 La gestión controlada de cuentas locales se describe en
 [`documentacion/usuarios_sistema.md`](documentacion/usuarios_sistema.md).
+La lista blanca de rutas y las transferencias SFTP se explican en
+[`documentacion/archivos.md`](documentacion/archivos.md).

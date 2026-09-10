@@ -27,8 +27,18 @@ def upgrade() -> None:
         sa.Column("permite_lectura", sa.Boolean(), server_default="1", nullable=False),
         sa.Column("permite_escritura", sa.Boolean(), server_default="0", nullable=False),
         sa.Column("activo", sa.Boolean(), server_default="1", nullable=False),
-        sa.Column("creado_en", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.Column("actualizado_en", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.Column(
+            "creado_en",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.Column(
+            "actualizado_en",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "permite_lectura = 1 OR permite_escritura = 1",
             name="ck_rutas_archivos_permitidas_alguna_operacion_habilitada",
@@ -73,10 +83,26 @@ def upgrade() -> None:
     op.bulk_insert(
         permisos,
         [
-            {"id_permiso": 19, "codigo": "consultar_archivos", "descripcion": "Consultar metadatos de archivos en rutas remotas permitidas."},
-            {"id_permiso": 20, "codigo": "descargar_archivos", "descripcion": "Descargar archivos desde rutas remotas permitidas."},
-            {"id_permiso": 21, "codigo": "cargar_archivos", "descripcion": "Cargar archivos en rutas remotas permitidas."},
-            {"id_permiso": 22, "codigo": "gestionar_rutas_archivos", "descripcion": "Administrar las raíces remotas permitidas por servidor."},
+            {
+                "id_permiso": 19,
+                "codigo": "consultar_archivos",
+                "descripcion": "Consultar metadatos de archivos en rutas remotas permitidas.",
+            },
+            {
+                "id_permiso": 20,
+                "codigo": "descargar_archivos",
+                "descripcion": "Descargar archivos desde rutas remotas permitidas.",
+            },
+            {
+                "id_permiso": 21,
+                "codigo": "cargar_archivos",
+                "descripcion": "Cargar archivos en rutas remotas permitidas.",
+            },
+            {
+                "id_permiso": 22,
+                "codigo": "gestionar_rutas_archivos",
+                "descripcion": "Administrar las raíces remotas permitidas por servidor.",
+            },
         ],
     )
     op.bulk_insert(
@@ -97,5 +123,7 @@ def downgrade() -> None:
     op.execute(sa.text("DELETE FROM roles_permisos WHERE id_permiso IN (19, 20, 21, 22)"))
     op.execute(sa.text("DELETE FROM permisos WHERE id_permiso IN (19, 20, 21, 22)"))
     op.drop_index("ix_rutas_archivos_permitidas_activo", table_name="rutas_archivos_permitidas")
-    op.drop_index("ix_rutas_archivos_permitidas_id_servidor", table_name="rutas_archivos_permitidas")
+    op.drop_index(
+        "ix_rutas_archivos_permitidas_id_servidor", table_name="rutas_archivos_permitidas"
+    )
     op.drop_table("rutas_archivos_permitidas")

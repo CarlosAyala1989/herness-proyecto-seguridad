@@ -73,9 +73,7 @@ async def borrar_ruta_archivo(
 ) -> Response:
     if not confirmar:
         raise ErrorConfirmacionRequerida()
-    await gestor_archivos.eliminar_ruta_archivo(
-        sesion, id_servidor, id_ruta, usuario, solicitud
-    )
+    await gestor_archivos.eliminar_ruta_archivo(sesion, id_servidor, id_ruta, usuario, solicitud)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -122,7 +120,7 @@ async def obtener_archivo(
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="{nombre_ascii}"; filename*=UTF-8\'\'{nombre_utf8}'
+                f"attachment; filename=\"{nombre_ascii}\"; filename*=UTF-8''{nombre_utf8}"
             ),
             "X-Content-Type-Options": "nosniff",
         },

@@ -158,9 +158,7 @@ async def test_slack_consulta_y_entrega_archivo_en_mensaje_directo(
     adaptador._aplicacion = SimpleNamespace(client=cliente_slack)  # type: ignore[assignment]
     respuestas = RespuestasSlack()
 
-    await adaptador.recibir_comando(
-        RespuestasSlack(), _comando("seleccionar 7"), respuestas
-    )
+    await adaptador.recibir_comando(RespuestasSlack(), _comando("seleccionar 7"), respuestas)
     await adaptador.recibir_comando(
         RespuestasSlack(),
         _comando("archivo_info /srv/hermes/intercambio/prueba.bin"),

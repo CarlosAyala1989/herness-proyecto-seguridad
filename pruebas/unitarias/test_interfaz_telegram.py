@@ -281,9 +281,7 @@ async def test_consulta_descarga_y_carga_archivo_sin_sobrescribir(
     await interfaz.consultar_archivo(actualizacion, contexto)
     await interfaz.descargar_archivo(actualizacion, contexto)
 
-    mensaje.reply_to_message = SimpleNamespace(
-        document=DocumentoTelegramSimulado(b"nuevo")
-    )
+    mensaje.reply_to_message = SimpleNamespace(document=DocumentoTelegramSimulado(b"nuevo"))
     contexto.args = ["/srv/hermes/intercambio/nuevo.txt"]
     await interfaz.cargar_archivo(actualizacion, contexto)
 

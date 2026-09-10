@@ -118,7 +118,7 @@ alembic -c alembic.ini upgrade head
 alembic -c alembic.ini current
 ```
 
-La revisión esperada es `0009 (head)`. Las migraciones crean el inventario, los
+La revisión esperada es `0010 (head)`. Las migraciones crean el inventario, los
 usuarios, los roles, los permisos y la auditoría; además registran los roles y
 permisos iniciales de forma reproducible. La segunda revisión incorpora el
 permiso `comprobar_conexion`.
@@ -133,6 +133,8 @@ La octava añade tareas programadas, ocurrencias idempotentes, entregas de
 resultados y permisos de consulta y administración.
 La novena añade permisos separados para consultar, gestionar y eliminar
 usuarios remotos, además de una autorización reforzada para cuentas protegidas.
+La décima crea las raíces de archivos permitidas y separa los permisos de
+consulta, descarga, carga y administración de rutas.
 
 ## 5. Crear el primer administrador
 
@@ -194,7 +196,7 @@ Una respuesta correcta tiene este formato; el tiempo cambia en cada consulta:
 ```json
 {
   "aplicacion": "Hermes",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "estado": "saludable",
   "base_datos": {
     "estado": "disponible",
@@ -381,6 +383,10 @@ efímero descrito en esa guía.
 
 ## 13. Ejecutar comprobaciones
 
+Antes de las comprobaciones finales, prepara una raíz SFTP de laboratorio y
+regístrala siguiendo `documentacion/archivos.md`. El servidor OpenSSH debe tener
+el subsistema SFTP habilitado; Hermes no modifica esa configuración.
+
 Pruebas unitarias, sin depender de Docker:
 
 ```bash
@@ -403,16 +409,12 @@ ruff format --check aplicacion migraciones pruebas
 
 ## Alcance del hito
 
-El hito 12 añade consulta y administración controlada de cuentas locales Linux
-y Windows Server. Reutiliza inventario, permisos, motor de acciones,
-adaptadores, SSH, auditoría y selección múltiple sin convertir los canales de
-mensajería en backends independientes.
+El hito 13 añade consulta, carga y descarga SFTP sobre raíces permitidas de
+Linux y Windows Server. Reutiliza inventario, permisos, conexión verificada,
+auditoría y mensajería sin convertir los canales en backends independientes.
 
-Las acciones de lectura pueden probarse desde Telegram cuando exista un token,
-un usuario vinculado y servidores activos. El reinicio requiere permiso y una
-confirmación efímera; no debe probarse sobre el anfitrión salvo que haya sido
-planificado expresamente. Las mutaciones de servicios y usuarios exigen
-permiso, confirmación y privilegios remotos limitados. Las cuentas protegidas
-requieren además un permiso y un indicador explícito que no se ofrece desde
-mensajería. La transferencia de archivos corresponde al hito 13 y no forma
-parte de esta entrega.
+Las transferencias pueden probarse desde Telegram cuando exista un token, un
+usuario vinculado, un único servidor seleccionado y una raíz registrada. Slack
+requiere además `files:write` para entregar descargas. Los despliegues y las
+plantillas de aplicaciones corresponden al hito 14 y no forman parte de esta
+entrega.

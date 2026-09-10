@@ -223,6 +223,19 @@ solo enviarán códigos y parámetros del catálogo, nunca texto para una shell.
   interrumpida no se reintenta automáticamente para evitar duplicar una orden
   remota cuyo resultado haya quedado ambiguo.
 
+- Las transferencias reutilizan la conexión AsyncSSH ya verificada y abren una
+  sesión SFTP, nunca una shell. Cada servidor mantiene raíces persistentes de
+  lectura o escritura y no existe una ruta permitida global implícita.
+- La validación léxica rechaza rutas relativas, `..`, controles, raíces completas,
+  unidades completas, nombres reservados Windows y recursos UNC. Después, el
+  transporte resuelve raíz y destino de forma canónica y compara componentes.
+- Las cargas usan creación exclusiva de manera predeterminada. La API solo permite
+  reemplazar un archivo regular dentro de una raíz de escritura cuando recibe
+  `sobrescribir=true` y `confirmar=true`; los canales no sobrescriben.
+- Los contenidos viven únicamente durante la solicitud y están acotados por
+  `HERMES_LIMITE_ARCHIVO_TRANSFERENCIA_BYTES`. MariaDB conserva configuración,
+  permisos y auditoría, pero nunca bytes de archivos.
+
 ## Administración futura del Ubuntu anfitrión
 
 Hermes no ejecuta órdenes directamente en su propio proceso. El Ubuntu del

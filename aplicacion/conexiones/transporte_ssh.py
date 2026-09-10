@@ -367,9 +367,7 @@ class TransporteSSHAsync:
             asyncssh.FILEXFER_TYPE_SYMLINK: "enlace_simbolico",
         }
         modificado = (
-            datetime.fromtimestamp(atributos.mtime, tz=UTC)
-            if atributos.mtime is not None
-            else None
+            datetime.fromtimestamp(atributos.mtime, tz=UTC) if atributos.mtime is not None else None
         )
         return InformacionArchivoRemoto(
             ruta_remota=ruta_canonica,

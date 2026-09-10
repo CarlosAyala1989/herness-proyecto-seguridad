@@ -389,7 +389,9 @@ class InterfazSlack(CanalMensajeria):
         ruta = " ".join(argumentos).strip()
         id_servidor = self._id_servidor_archivos(estado)
         if id_servidor is None:
-            await self._responder(responder, "Selecciona un único servidor para administrar archivos.")
+            await self._responder(
+                responder, "Selecciona un único servidor para administrar archivos."
+            )
             return
         if not ruta:
             await self._responder(responder, "Uso correcto: `/hermes archivo_info <ruta>`.")
@@ -402,7 +404,9 @@ class InterfazSlack(CanalMensajeria):
                 ruta,
             )
         except ErrorHermes as error:
-            await self._responder(responder, f"No fue posible consultar el archivo: {error.mensaje}")
+            await self._responder(
+                responder, f"No fue posible consultar el archivo: {error.mensaje}"
+            )
             return
         await self._responder(
             responder,
@@ -422,13 +426,17 @@ class InterfazSlack(CanalMensajeria):
         ruta = " ".join(argumentos).strip()
         id_servidor = self._id_servidor_archivos(estado)
         if id_servidor is None:
-            await self._responder(responder, "Selecciona un único servidor para administrar archivos.")
+            await self._responder(
+                responder, "Selecciona un único servidor para administrar archivos."
+            )
             return
         if not ruta:
             await self._responder(responder, "Uso correcto: `/hermes descargar_archivo <ruta>`.")
             return
         if self._aplicacion is None:
-            await self._responder(responder, "La entrega de archivos de Slack no está inicializada.")
+            await self._responder(
+                responder, "La entrega de archivos de Slack no está inicializada."
+            )
             return
         try:
             descarga = await self._gestor.descargar_archivo(
@@ -438,7 +446,9 @@ class InterfazSlack(CanalMensajeria):
                 ruta,
             )
         except ErrorHermes as error:
-            await self._responder(responder, f"No fue posible descargar el archivo: {error.mensaje}")
+            await self._responder(
+                responder, f"No fue posible descargar el archivo: {error.mensaje}"
+            )
             return
         await self._aplicacion.client.files_upload_v2(
             channel=solicitud.identificador_canal,

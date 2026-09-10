@@ -333,9 +333,7 @@ class GestorMensajeria:
         contexto = self.crear_contexto(identificador_externo, identificador_evento)
         async with self._fabrica_sesiones() as sesion:
             usuario = await self._autenticar(sesion, identificador_externo, contexto)
-            await comprobar_permiso_usuario(
-                sesion, None, usuario, "consultar_archivos", contexto
-            )
+            await comprobar_permiso_usuario(sesion, None, usuario, "consultar_archivos", contexto)
             return await gestor_archivos.consultar_informacion_archivo(
                 sesion,
                 id_servidor,
@@ -358,9 +356,7 @@ class GestorMensajeria:
         contexto = self.crear_contexto(identificador_externo, identificador_evento)
         async with self._fabrica_sesiones() as sesion:
             usuario = await self._autenticar(sesion, identificador_externo, contexto)
-            await comprobar_permiso_usuario(
-                sesion, None, usuario, "descargar_archivos", contexto
-            )
+            await comprobar_permiso_usuario(sesion, None, usuario, "descargar_archivos", contexto)
             return await gestor_archivos.descargar_archivo(
                 sesion,
                 id_servidor,

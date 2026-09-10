@@ -88,8 +88,12 @@ class TransporteArchivosSimulado:
 
 
 @pytest.fixture
-async def contexto_archivos() -> AsyncIterator[tuple[object, tuple[str, str], tuple[str, str], str]]:
-    configuracion = Configuracion()  # type: ignore[call-arg]
+async def contexto_archivos() -> AsyncIterator[
+    tuple[object, tuple[str, str], tuple[str, str], str]
+]:
+    configuracion = Configuracion(  # type: ignore[call-arg]
+        limite_archivo_transferencia_bytes=1_024
+    )
     motor = crear_motor_base_datos(configuracion)
     fabrica_sesiones = crear_fabrica_sesiones(motor)
     prefijo = f"archivos-{uuid4().hex[:10]}"
@@ -140,7 +144,9 @@ async def contexto_archivos() -> AsyncIterator[tuple[object, tuple[str, str], tu
     finally:
         async with fabrica_sesiones() as sesion:
             await sesion.execute(
-                delete(RegistroAuditoria).where(RegistroAuditoria.nombre_usuario.like(f"{prefijo}%"))
+                delete(RegistroAuditoria).where(
+                    RegistroAuditoria.nombre_usuario.like(f"{prefijo}%")
+                )
             )
             await sesion.execute(delete(Servidor).where(Servidor.nombre.like(f"{prefijo}%")))
             await sesion.execute(delete(Usuario).where(Usuario.nombre_usuario.like(f"{prefijo}%")))
@@ -230,6 +236,15 @@ async def test_api_transfiere_restringe_y_audita_archivos(
         )
         assert respuesta_sobrescritura_confirmada.status_code == 200
         assert respuesta_sobrescritura_confirmada.json()["sobrescrito"] is True
+
+        respuesta_excedida = await cliente.put(
+            f"{raiz}/archivos/cargar",
+            params={"ruta_remota": "/srv/hermes/intercambio/grande.bin"},
+            auth=credencial_admin,
+            content=b"x" * 1_025,
+        )
+        assert respuesta_excedida.status_code == 413
+        assert respuesta_excedida.json()["codigo"] == "limite_archivo_superado"
 
     fabrica_sesiones = aplicacion.state.fabrica_sesiones
     async with fabrica_sesiones() as sesion:

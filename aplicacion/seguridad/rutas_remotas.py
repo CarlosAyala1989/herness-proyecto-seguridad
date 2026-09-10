@@ -71,7 +71,9 @@ def validar_y_normalizar_ruta_remota(
                 raise ErrorRutaRemotaNoValida()
         normalizada = objeto_windows.as_posix()
         if len(objeto_windows.parts) == 1 and not permitir_raiz:
-            raise ErrorRutaRemotaNoValida("No se permite autorizar la unidad completa del servidor.")
+            raise ErrorRutaRemotaNoValida(
+                "No se permite autorizar la unidad completa del servidor."
+            )
         return normalizada
 
     raise ErrorRutaRemotaNoValida("El sistema operativo no admite rutas remotas.")
@@ -84,9 +86,7 @@ def ruta_esta_contenida(
 ) -> bool:
     """Compara componentes completos y respeta mayúsculas de Windows."""
 
-    clase_ruta = (
-        PurePosixPath if sistema_operativo is SistemaOperativo.LINUX else PureWindowsPath
-    )
+    clase_ruta = PurePosixPath if sistema_operativo is SistemaOperativo.LINUX else PureWindowsPath
     ruta_objeto = clase_ruta(ruta)
     raiz_objeto = clase_ruta(raiz)
     partes_ruta = ruta_objeto.parts

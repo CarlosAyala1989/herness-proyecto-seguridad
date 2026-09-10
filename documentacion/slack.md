@@ -52,7 +52,8 @@ Hermes. En la administración oficial de Slack:
    `connections:write`;
 5. comprueba que Socket Mode y la interactividad estén habilitados.
 
-Los únicos alcances de bot declarados son `commands` y `chat:write`. El alcance
+Los alcances de bot declarados son `commands`, `chat:write` y `files:write`. Este
+último permite entregar al usuario una descarga ya autorizada. El alcance
 `connections:write` pertenece al token de aplicación, no al token del bot.
 No pegues ninguno de los tokens en Git, capturas, incidencias o comandos del
 historial.
@@ -127,6 +128,8 @@ Todos los comandos se envían por mensaje directo:
 /hermes bloquear_usuario hermes_prueba
 /hermes desbloquear_usuario hermes_prueba
 /hermes eliminar_usuario hermes_prueba
+/hermes archivo_info /srv/hermes/intercambio/prueba.txt
+/hermes descargar_archivo /srv/hermes/intercambio/prueba.txt
 /hermes reiniciar
 /hermes cancelar
 ```
@@ -141,6 +144,12 @@ ni permite activar la excepción para cuentas protegidas.
 El estado conversacional es deliberadamente efímero y se pierde al reiniciar
 el proceso; inventario, usuarios, vínculos, permisos y auditoría sí permanecen
 en MariaDB.
+
+Las operaciones de archivo exigen una selección individual. Slack consulta y
+entrega descargas mediante `files_upload_v2`; no recibe cargas hacia el servidor
+en este hito porque un comando de barra no transporta adjuntos. Las cargas están
+disponibles por la API local y Telegram. El contenido sigue limitado por la
+configuración común y nunca se persiste en MariaDB.
 
 ## Auditoría y procesos
 

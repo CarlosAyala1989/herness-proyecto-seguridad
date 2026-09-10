@@ -148,7 +148,9 @@ class ErrorLimiteSeleccionServidores(ErrorHermes):
 class ErrorRutaRemotaNoValida(ErrorHermes):
     """Rechaza rutas ambiguas, relativas o propias de otra plataforma."""
 
-    def __init__(self, mensaje: str = "La ruta remota no tiene un formato seguro y válido.") -> None:
+    def __init__(
+        self, mensaje: str = "La ruta remota no tiene un formato seguro y válido."
+    ) -> None:
         super().__init__(
             mensaje,
             codigo="ruta_remota_no_valida",
@@ -182,7 +184,9 @@ class ErrorLimiteArchivoExcedido(ErrorHermes):
 class ErrorArchivoRemotoNoCompatible(ErrorHermes):
     """Representa tipos de archivo u operaciones no admitidas."""
 
-    def __init__(self, mensaje: str = "La operación no es compatible con el archivo remoto.") -> None:
+    def __init__(
+        self, mensaje: str = "La operación no es compatible con el archivo remoto."
+    ) -> None:
         super().__init__(
             mensaje,
             codigo="archivo_remoto_no_compatible",
