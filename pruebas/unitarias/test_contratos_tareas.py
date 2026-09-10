@@ -38,6 +38,7 @@ def test_normaliza_nombre_y_acepta_fecha_con_zona() -> None:
         {"tipo_programacion": "intervalo", "intervalo_segundos": None},
         {"intervalo_segundos": 59},
         {"seleccion": {"ids_servidores": [1, 1]}},
+        {"descripcion": "texto\x00no imprimible"},
         {"campo_ajeno": "comando libre"},
     ],
 )

@@ -35,8 +35,8 @@ class CrearTareaProgramada(BaseModel):
         if valor is None:
             return None
         limpio = " ".join(valor.split())
-        if not limpio:
-            raise ValueError("El texto no puede quedar vacío.")
+        if not limpio or not limpio.isprintable():
+            raise ValueError("El texto no es válido.")
         return limpio
 
     @field_validator("programada_para")

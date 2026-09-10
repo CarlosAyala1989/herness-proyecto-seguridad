@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -12,7 +13,11 @@ from sqlalchemy.orm import selectinload
 
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import ErrorHermes, ErrorNoAutenticado
-from aplicacion.esquemas.acciones import SeleccionServidores, SolicitudEjecucionMultiple
+from aplicacion.esquemas.acciones import (
+    ResultadoAccionMultipleRespuesta,
+    SeleccionServidores,
+    SolicitudEjecucionMultiple,
+)
 from aplicacion.modelos.acceso import Rol, Usuario
 from aplicacion.modelos.enumeraciones import (
     CanalAuditoria,
@@ -27,6 +32,7 @@ from aplicacion.modelos.tarea_programada import (
     NotificacionTarea,
     TareaProgramada,
 )
+from aplicacion.monitoreo.notificaciones import ResumenNotificaciones
 from aplicacion.servicios.auditoria import ContextoAuditoria
 from aplicacion.servicios.gestor_acciones_multiples import ejecutar_accion_multiple
 from aplicacion.servicios.gestor_conexiones import FabricaTransporteRemoto
@@ -86,6 +92,7 @@ async def marcar_ejecuciones_interrumpidas(
     """Cierra evidencia abandonada sin repetir la acción remota."""
 
     limite = _ahora() - timedelta(seconds=antiguedad_segundos)
+    ahora = _ahora()
     resultado = await sesion.execute(
         update(EjecucionTarea)
         .where(
@@ -94,12 +101,17 @@ async def marcar_ejecuciones_interrumpidas(
         )
         .values(
             estado=EstadoEjecucionTarea.INTERRUMPIDA,
-            finalizada_en=_ahora(),
+            finalizada_en=ahora,
             detalle_error=(
                 "El trabajador anterior no finalizó esta ocurrencia; no se reintentó para "
                 "evitar duplicar una acción remota."
             ),
         )
+    )
+    await sesion.execute(
+        update(TareaProgramada)
+        .where(TareaProgramada.bloqueada_hasta <= ahora)
+        .values(token_bloqueo=None, bloqueada_hasta=None)
     )
     await sesion.commit()
     return int(resultado.rowcount or 0)
@@ -200,7 +212,7 @@ async def _cargar_usuario(sesion: AsyncSession, id_usuario: int | None) -> Usuar
     return usuario
 
 
-def _resumen_seguro(resultado) -> dict[str, object]:
+def _resumen_seguro(resultado: ResultadoAccionMultipleRespuesta) -> dict[str, object]:
     return {
         "accion": resultado.accion.value,
         "estado": resultado.estado,
@@ -337,7 +349,7 @@ async def ejecutar_ciclo_tareas(
     fabrica_sesiones: async_sessionmaker[AsyncSession],
     fabrica_transporte: FabricaTransporteRemoto,
     configuracion: Configuracion,
-    enviar_notificaciones,
+    enviar_notificaciones: Callable[[], Awaitable[ResumenNotificaciones]],
 ) -> ResumenCicloTareas:
     """Recupera evidencia antigua, ejecuta vencimientos y entrega resultados."""
 
