@@ -107,7 +107,7 @@ def _servidor() -> ServidorResumen:
 
 
 def _resultado(codigo: CodigoAccion) -> ResultadoAccionRespuesta:
-    datos: dict[str, str | int | float | bool | None]
+    datos: dict[str, object]
     if codigo is CodigoAccion.OBTENER_IDENTIDAD:
         datos = {"usuario": "operador", "nombre_equipo": "ubuntu-laboratorio"}
     elif codigo is CodigoAccion.CONSULTAR_PROCESO:
@@ -141,6 +141,34 @@ def _resultado(codigo: CodigoAccion) -> ResultadoAccionRespuesta:
             "estado_nativo": "active",
             "inicio_automatico": True,
             "accion_realizada": acciones[codigo],
+        }
+    elif codigo is CodigoAccion.LISTAR_USUARIOS_SISTEMA:
+        datos = {
+            "usuarios": [
+                {
+                    "nombre_usuario": "usuario_01",
+                    "identificador": "1001",
+                    "estado": "habilitado",
+                    "cuenta_protegida": False,
+                    "grupos": ["operadores"],
+                }
+            ],
+            "total_usuarios": 1,
+        }
+    elif codigo in {
+        CodigoAccion.CREAR_USUARIO_SISTEMA,
+        CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA,
+        CodigoAccion.BLOQUEAR_USUARIO_SISTEMA,
+        CodigoAccion.DESBLOQUEAR_USUARIO_SISTEMA,
+        CodigoAccion.ELIMINAR_USUARIO_SISTEMA,
+    }:
+        datos = {
+            "nombre_usuario": "usuario_01",
+            "estado": "deshabilitado",
+            "cuenta_protegida": False,
+            "nombre_grupo": None,
+            "operacion_grupo": None,
+            "accion_realizada": "creacion",
         }
     else:
         datos = {"reinicio_programado": True, "demora_segundos": 60}
@@ -487,6 +515,82 @@ async def test_rechaza_sintaxis_de_servicio_antes_de_crear_confirmacion(
 
     assert mensaje.respuestas[-1][0] == "Uso correcto: /detener_servicio <nombre>."
     gestor.comprobar_accion_sensible.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lista_usuarios_locales_con_estado_y_grupos(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.ejecutar_accion.return_value = _resultado(CodigoAccion.LISTAR_USUARIOS_SISTEMA)
+    mensaje = MensajeSimulado()
+    contexto = _contexto()
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await interfaz.mostrar_usuarios_sistema(_actualizacion(mensaje), contexto)
+
+    texto = mensaje.respuestas[-1][0]
+    assert "Usuarios del servidor: ubuntu-laboratorio" in texto
+    assert "usuario_01 · id 1001 · habilitado" in texto
+    assert "Grupos: operadores" in texto
+    assert gestor.ejecutar_accion.await_args.args[3] == "listar_usuarios_sistema"
+
+
+@pytest.mark.asyncio
+async def test_creacion_usuario_no_recibe_contrasena_y_exige_confirmacion(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_accion_sensible.return_value = _servidor()
+    gestor.ejecutar_accion.return_value = _resultado(CodigoAccion.CREAR_USUARIO_SISTEMA)
+    mensaje = MensajeSimulado()
+    contexto = _contexto("usuario_01", "Usuario", "de", "prueba")
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await interfaz.crear_usuario_sistema(_actualizacion(mensaje), contexto)
+
+    solicitud_previa = gestor.comprobar_accion_sensible.await_args.args[4]
+    assert solicitud_previa.parametros == {
+        "nombre_usuario": "usuario_01",
+        "nombre_mostrar": "Usuario de prueba",
+    }
+    assert "contrasena" not in solicitud_previa.parametros
+    datos_boton = mensaje.respuestas[-1][1].inline_keyboard[0][0].callback_data
+    await interfaz.resolver_accion_sensible(
+        _actualizacion(
+            mensaje,
+            id_actualizacion=906,
+            consulta=ConsultaBotonSimulada(datos_boton),
+        ),
+        contexto,
+    )
+
+    solicitud_final = gestor.ejecutar_accion.await_args.args[4]
+    assert solicitud_final.confirmar is True
+    assert "Cuenta: usuario_01" in mensaje.respuestas[-1][0]
+
+
+@pytest.mark.asyncio
+async def test_grupo_con_espacios_se_envia_sin_habilitar_cuentas_protegidas(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_accion_sensible.return_value = _servidor()
+    contexto = _contexto("usuario_01", "soporte", "local")
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await interfaz.agregar_usuario_grupo(_actualizacion(MensajeSimulado()), contexto)
+
+    solicitud = gestor.comprobar_accion_sensible.await_args.args[4]
+    assert solicitud.parametros == {
+        "nombre_usuario": "usuario_01",
+        "nombre_grupo": "soporte local",
+        "operacion_grupo": "agregar",
+        "autorizar_cuenta_protegida": False,
+    }
 
 
 def test_configuracion_protege_y_exige_token_telegram() -> None:

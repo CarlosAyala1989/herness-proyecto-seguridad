@@ -23,6 +23,10 @@ from aplicacion.esquemas.acciones import (
     SolicitudEjecucionMultiple,
 )
 from aplicacion.interfaces.canal_mensajeria import CanalMensajeria
+from aplicacion.interfaces.formateo_usuarios import (
+    formatear_listado_usuarios,
+    formatear_mutacion_usuario,
+)
 from aplicacion.modelos.enumeraciones import SistemaOperativo
 from aplicacion.servicios.gestor_identidades_mensajeria import (
     construir_identificador_slack,
@@ -232,7 +236,10 @@ class InterfazSlack(CanalMensajeria):
             "seleccionar_grupo <id> · seleccionar_todos · seleccion\n"
             "diagnostico · identidad · proceso <id> · servicio <nombre>\n"
             "iniciar_servicio <nombre> · detener_servicio <nombre> · "
-            "reiniciar_servicio <nombre> · reiniciar · cancelar"
+            "reiniciar_servicio <nombre> · usuarios · crear_usuario <cuenta> [nombre]\n"
+            "agregar_grupo <cuenta> <grupo> · quitar_grupo <cuenta> <grupo> · "
+            "bloquear_usuario <cuenta> · desbloquear_usuario <cuenta> · "
+            "eliminar_usuario <cuenta> · reiniciar · cancelar"
         )
 
     async def recibir_comando(
@@ -295,6 +302,36 @@ class InterfazSlack(CanalMensajeria):
             await self._consultar_proceso(argumentos, solicitud, estado, responder)
         elif subcomando == "servicio":
             await self._consultar_servicio(argumentos, solicitud, estado, responder)
+        elif subcomando == "usuarios" and not argumentos:
+            await self._ejecutar_accion(
+                solicitud,
+                estado,
+                "listar_usuarios_sistema",
+                SolicitudEjecucionAccion(),
+                responder,
+            )
+        elif subcomando == "crear_usuario":
+            await self._crear_usuario_sistema(argumentos, solicitud, estado, responder)
+        elif subcomando in {"agregar_grupo", "quitar_grupo"}:
+            await self._cambiar_grupo_usuario(
+                subcomando,
+                argumentos,
+                solicitud,
+                estado,
+                responder,
+            )
+        elif subcomando in {
+            "bloquear_usuario",
+            "desbloquear_usuario",
+            "eliminar_usuario",
+        }:
+            await self._cambiar_estado_usuario(
+                subcomando,
+                argumentos,
+                solicitud,
+                estado,
+                responder,
+            )
         elif subcomando in {
             "iniciar_servicio",
             "detener_servicio",
@@ -549,6 +586,106 @@ class InterfazSlack(CanalMensajeria):
             responder,
         )
 
+    async def _crear_usuario_sistema(
+        self,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        if not argumentos:
+            await self._responder(
+                responder,
+                "Uso correcto: `/hermes crear_usuario <cuenta> [nombre para mostrar]`.",
+            )
+            return
+        nombre_usuario = argumentos[0]
+        nombre_mostrar = " ".join(argumentos[1:]) or None
+        await self._solicitar_accion_sensible(
+            solicitud,
+            estado,
+            "crear_usuario_sistema",
+            SolicitudEjecucionAccion(
+                parametros={
+                    "nombre_usuario": nombre_usuario,
+                    "nombre_mostrar": nombre_mostrar,
+                }
+            ),
+            f"crear la cuenta local {nombre_usuario}, inicialmente deshabilitada",
+            responder,
+        )
+
+    async def _cambiar_grupo_usuario(
+        self,
+        subcomando: str,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        if len(argumentos) < 2:
+            await self._responder(
+                responder,
+                f"Uso correcto: `/hermes {subcomando} <cuenta> <grupo>`.",
+            )
+            return
+        operacion = "agregar" if subcomando == "agregar_grupo" else "quitar"
+        nombre_usuario = argumentos[0]
+        nombre_grupo = " ".join(argumentos[1:])
+        await self._solicitar_accion_sensible(
+            solicitud,
+            estado,
+            "cambiar_grupo_usuario_sistema",
+            SolicitudEjecucionAccion(
+                parametros={
+                    "nombre_usuario": nombre_usuario,
+                    "nombre_grupo": nombre_grupo,
+                    "operacion_grupo": operacion,
+                    "autorizar_cuenta_protegida": False,
+                }
+            ),
+            f"{operacion} la cuenta {nombre_usuario} en el grupo {nombre_grupo}",
+            responder,
+        )
+
+    async def _cambiar_estado_usuario(
+        self,
+        subcomando: str,
+        argumentos: list[str],
+        solicitud: SolicitudSlack,
+        estado: EstadoUsuarioSlack,
+        responder: ResponderSlack,
+    ) -> None:
+        if len(argumentos) != 1:
+            await self._responder(
+                responder,
+                f"Uso correcto: `/hermes {subcomando} <cuenta>`.",
+            )
+            return
+        configuraciones = {
+            "bloquear_usuario": ("bloquear_usuario_sistema", "bloquear"),
+            "desbloquear_usuario": ("desbloquear_usuario_sistema", "habilitar"),
+            "eliminar_usuario": (
+                "eliminar_usuario_sistema",
+                "eliminar junto con su directorio de usuario",
+            ),
+        }
+        codigo_accion, verbo = configuraciones[subcomando]
+        nombre_usuario = argumentos[0]
+        await self._solicitar_accion_sensible(
+            solicitud,
+            estado,
+            codigo_accion,
+            SolicitudEjecucionAccion(
+                parametros={
+                    "nombre_usuario": nombre_usuario,
+                    "autorizar_cuenta_protegida": False,
+                }
+            ),
+            f"{verbo} la cuenta local {nombre_usuario}",
+            responder,
+        )
+
     async def _ejecutar_accion(
         self,
         solicitud: SolicitudSlack,
@@ -574,7 +711,16 @@ class InterfazSlack(CanalMensajeria):
                     codigo_accion,
                     datos,
                 )
-                await self._responder(responder, self._formatear_resultado(resultado))
+                if resultado.accion.value == "listar_usuarios_sistema":
+                    for texto in formatear_listado_usuarios(
+                        resultado.nombre_servidor,
+                        resultado.sistema_operativo,
+                        resultado.datos,
+                        LIMITE_MENSAJE_SLACK,
+                    ):
+                        await self._responder(responder, texto)
+                else:
+                    await self._responder(responder, self._formatear_resultado(resultado))
             else:
                 resultado_multiple = await self._gestor.ejecutar_accion_multiple(
                     solicitud.identidad_externa,
@@ -626,6 +772,18 @@ class InterfazSlack(CanalMensajeria):
                 + f"Estado: {resultado.datos.get('estado')}\n"
                 + f"Operación: {resultado.datos.get('accion_realizada')}"
             )
+        if resultado.accion.value in {
+            "crear_usuario_sistema",
+            "cambiar_grupo_usuario_sistema",
+            "bloquear_usuario_sistema",
+            "desbloquear_usuario_sistema",
+            "eliminar_usuario_sistema",
+        }:
+            return formatear_mutacion_usuario(
+                resultado.nombre_servidor,
+                resultado.sistema_operativo,
+                resultado.datos,
+            )
         return encabezado + "Reinicio programado en 60 segundos."
 
     @staticmethod
@@ -640,11 +798,18 @@ class InterfazSlack(CanalMensajeria):
         lineas = []
         for elemento in resultado.resultados:
             nombre = elemento.nombre_servidor or f"id {elemento.id_servidor}"
-            linea = (
-                f"ERROR · {nombre}: {elemento.mensaje_error}"
-                if elemento.estado == "error"
-                else f"OK · {nombre}: completada"
-            )
+            if elemento.estado == "error":
+                linea = f"ERROR · {nombre}: {elemento.mensaje_error}"
+            elif resultado.accion.value == "listar_usuarios_sistema" and elemento.datos:
+                linea = f"OK · {nombre}: {elemento.datos.get('total_usuarios', 0)} usuario(s)"
+            elif resultado.accion.value.endswith("usuario_sistema") and elemento.datos:
+                linea = (
+                    f"OK · {nombre}: cuenta "
+                    f"{elemento.datos.get('nombre_usuario', 'no disponible')}, "
+                    f"{elemento.datos.get('estado', 'desconocido')}"
+                )
+            else:
+                linea = f"OK · {nombre}: completada"
             lineas.append(linea)
         mensajes: list[str] = []
         actual = encabezado

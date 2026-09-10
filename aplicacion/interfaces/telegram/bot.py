@@ -30,6 +30,10 @@ from aplicacion.esquemas.acciones import (
 )
 from aplicacion.esquemas.inventario import ServidorResumen
 from aplicacion.interfaces.canal_mensajeria import CanalMensajeria
+from aplicacion.interfaces.formateo_usuarios import (
+    formatear_listado_usuarios,
+    formatear_mutacion_usuario,
+)
 from aplicacion.modelos.enumeraciones import SistemaOperativo
 from aplicacion.servicios.gestor_telegram import GestorTelegram
 
@@ -71,6 +75,13 @@ COMANDOS_TELEGRAM = (
     BotCommand("iniciar_servicio", "Iniciar un servicio con confirmación"),
     BotCommand("detener_servicio", "Detener un servicio con confirmación"),
     BotCommand("reiniciar_servicio", "Reiniciar un servicio con confirmación"),
+    BotCommand("usuarios", "Listar usuarios locales del servidor"),
+    BotCommand("crear_usuario", "Crear una cuenta local deshabilitada"),
+    BotCommand("agregar_grupo", "Agregar una cuenta a un grupo local"),
+    BotCommand("quitar_grupo", "Quitar una cuenta de un grupo local"),
+    BotCommand("bloquear_usuario", "Bloquear una cuenta con confirmación"),
+    BotCommand("desbloquear_usuario", "Habilitar una cuenta con confirmación"),
+    BotCommand("eliminar_usuario", "Eliminar una cuenta con confirmación"),
     BotCommand("identidad", "Consultar identidad del servidor seleccionado"),
     BotCommand("proceso", "Consultar un proceso por identificador"),
     BotCommand("reiniciar", "Solicitar un reinicio con confirmación"),
@@ -112,6 +123,15 @@ class InterfazTelegram(CanalMensajeria):
         aplicacion.add_handler(CommandHandler("iniciar_servicio", self.iniciar_servicio))
         aplicacion.add_handler(CommandHandler("detener_servicio", self.detener_servicio))
         aplicacion.add_handler(CommandHandler("reiniciar_servicio", self.reiniciar_servicio))
+        aplicacion.add_handler(CommandHandler("usuarios", self.mostrar_usuarios_sistema))
+        aplicacion.add_handler(CommandHandler("crear_usuario", self.crear_usuario_sistema))
+        aplicacion.add_handler(CommandHandler("agregar_grupo", self.agregar_usuario_grupo))
+        aplicacion.add_handler(CommandHandler("quitar_grupo", self.quitar_usuario_grupo))
+        aplicacion.add_handler(CommandHandler("bloquear_usuario", self.bloquear_usuario_sistema))
+        aplicacion.add_handler(
+            CommandHandler("desbloquear_usuario", self.desbloquear_usuario_sistema)
+        )
+        aplicacion.add_handler(CommandHandler("eliminar_usuario", self.eliminar_usuario_sistema))
         aplicacion.add_handler(CommandHandler("identidad", self.obtener_identidad))
         aplicacion.add_handler(CommandHandler("proceso", self.consultar_proceso))
         aplicacion.add_handler(CommandHandler("reiniciar", self.solicitar_reinicio))
@@ -248,6 +268,13 @@ class InterfazTelegram(CanalMensajeria):
             "/iniciar_servicio <nombre> — iniciar con confirmación\n"
             "/detener_servicio <nombre> — detener con confirmación\n"
             "/reiniciar_servicio <nombre> — reiniciar con confirmación\n"
+            "/usuarios — listar cuentas locales y grupos\n"
+            "/crear_usuario <cuenta> [nombre] — crear deshabilitada\n"
+            "/agregar_grupo <cuenta> <grupo> — agregar a un grupo\n"
+            "/quitar_grupo <cuenta> <grupo> — quitar de un grupo\n"
+            "/bloquear_usuario <cuenta> — bloquear con confirmación\n"
+            "/desbloquear_usuario <cuenta> — habilitar con confirmación\n"
+            "/eliminar_usuario <cuenta> — eliminar con confirmación\n"
             "/identidad — consultar usuario remoto y equipo\n"
             "/proceso <id> — consultar un proceso\n"
             "/reiniciar — solicitar un reinicio confirmado\n"
@@ -642,7 +669,16 @@ class InterfazTelegram(CanalMensajeria):
                 )
             return
         if ids is not None and len(ids) == 1:
-            await self._responder(actualizacion, self._formatear_resultado(resultado))
+            if resultado.accion.value == "listar_usuarios_sistema":
+                for mensaje in formatear_listado_usuarios(
+                    resultado.nombre_servidor,
+                    resultado.sistema_operativo,
+                    resultado.datos,
+                    LIMITE_MENSAJE_TELEGRAM,
+                ):
+                    await self._responder(actualizacion, mensaje)
+            else:
+                await self._responder(actualizacion, self._formatear_resultado(resultado))
         else:
             for mensaje in self._formatear_resultado_multiple(resultado_multiple):
                 await self._responder(actualizacion, mensaje)
@@ -673,6 +709,13 @@ class InterfazTelegram(CanalMensajeria):
                 )
             elif resultado.accion.value.endswith("servicio") and elemento.datos:
                 detalle = f"servicio {elemento.datos.get('estado', 'no disponible')}"
+            elif resultado.accion.value == "listar_usuarios_sistema" and elemento.datos:
+                detalle = f"{elemento.datos.get('total_usuarios', 0)} usuario(s)"
+            elif resultado.accion.value.endswith("usuario_sistema") and elemento.datos:
+                detalle = (
+                    f"cuenta {elemento.datos.get('nombre_usuario', 'no disponible')}: "
+                    f"{elemento.datos.get('estado', 'desconocido')}"
+                )
             lineas.append(f"✅ {nombre}: {detalle}")
 
         mensajes: list[str] = []
@@ -747,6 +790,18 @@ class InterfazTelegram(CanalMensajeria):
                 f"Estado del servicio: {estado}\n"
                 f"Estado nativo: {datos.get('estado_nativo')}\n"
                 f"Inicio automático: {texto_inicio}"
+            )
+        if resultado.accion.value in {
+            "crear_usuario_sistema",
+            "cambiar_grupo_usuario_sistema",
+            "bloquear_usuario_sistema",
+            "desbloquear_usuario_sistema",
+            "eliminar_usuario_sistema",
+        }:
+            return formatear_mutacion_usuario(
+                resultado.nombre_servidor,
+                resultado.sistema_operativo,
+                resultado.datos,
             )
         encabezado = (
             f"Servidor: {resultado.nombre_servidor}\n"
@@ -828,6 +883,170 @@ class InterfazTelegram(CanalMensajeria):
             SolicitudEjecucionAccion(
                 parametros={"nombre_servicio": contexto.args[0]},
             ),
+        )
+
+    async def mostrar_usuarios_sistema(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Lista cuentas locales mediante el backend común."""
+
+        if contexto.args:
+            if await self._autorizar(actualizacion) is not None:
+                await self._responder(actualizacion, "Uso correcto: /usuarios.")
+            return
+        await self._ejecutar_accion(
+            actualizacion,
+            contexto,
+            "listar_usuarios_sistema",
+            SolicitudEjecucionAccion(),
+        )
+
+    async def crear_usuario_sistema(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Crea una cuenta sin contraseña y deshabilitada tras confirmar."""
+
+        if not contexto.args:
+            if await self._autorizar(actualizacion) is not None:
+                await self._responder(
+                    actualizacion,
+                    "Uso correcto: /crear_usuario <cuenta> [nombre para mostrar].",
+                )
+            return
+        nombre_usuario = contexto.args[0]
+        nombre_mostrar = " ".join(contexto.args[1:]) or None
+        await self._solicitar_accion_sensible(
+            actualizacion,
+            contexto,
+            "crear_usuario_sistema",
+            SolicitudEjecucionAccion(
+                parametros={
+                    "nombre_usuario": nombre_usuario,
+                    "nombre_mostrar": nombre_mostrar,
+                }
+            ),
+            f"crear la cuenta local {nombre_usuario}, inicialmente deshabilitada",
+        )
+
+    async def _cambiar_grupo_usuario(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+        operacion: str,
+        comando: str,
+    ) -> None:
+        if len(contexto.args) < 2:
+            if await self._autorizar(actualizacion) is not None:
+                await self._responder(
+                    actualizacion,
+                    f"Uso correcto: /{comando} <cuenta> <grupo>.",
+                )
+            return
+        nombre_usuario = contexto.args[0]
+        nombre_grupo = " ".join(contexto.args[1:])
+        await self._solicitar_accion_sensible(
+            actualizacion,
+            contexto,
+            "cambiar_grupo_usuario_sistema",
+            SolicitudEjecucionAccion(
+                parametros={
+                    "nombre_usuario": nombre_usuario,
+                    "nombre_grupo": nombre_grupo,
+                    "operacion_grupo": operacion,
+                    "autorizar_cuenta_protegida": False,
+                }
+            ),
+            f"{operacion} la cuenta {nombre_usuario} en el grupo {nombre_grupo}",
+        )
+
+    async def agregar_usuario_grupo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Solicita agregar una cuenta a un grupo no protegido."""
+
+        await self._cambiar_grupo_usuario(actualizacion, contexto, "agregar", "agregar_grupo")
+
+    async def quitar_usuario_grupo(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        """Solicita quitar una cuenta de un grupo no protegido."""
+
+        await self._cambiar_grupo_usuario(actualizacion, contexto, "quitar", "quitar_grupo")
+
+    async def _cambiar_estado_usuario(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+        codigo_accion: str,
+        verbo: str,
+        comando: str,
+    ) -> None:
+        if len(contexto.args) != 1:
+            if await self._autorizar(actualizacion) is not None:
+                await self._responder(
+                    actualizacion,
+                    f"Uso correcto: /{comando} <cuenta>.",
+                )
+            return
+        nombre_usuario = contexto.args[0]
+        await self._solicitar_accion_sensible(
+            actualizacion,
+            contexto,
+            codigo_accion,
+            SolicitudEjecucionAccion(
+                parametros={
+                    "nombre_usuario": nombre_usuario,
+                    "autorizar_cuenta_protegida": False,
+                }
+            ),
+            f"{verbo} la cuenta local {nombre_usuario}",
+        )
+
+    async def bloquear_usuario_sistema(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        await self._cambiar_estado_usuario(
+            actualizacion,
+            contexto,
+            "bloquear_usuario_sistema",
+            "bloquear",
+            "bloquear_usuario",
+        )
+
+    async def desbloquear_usuario_sistema(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        await self._cambiar_estado_usuario(
+            actualizacion,
+            contexto,
+            "desbloquear_usuario_sistema",
+            "habilitar",
+            "desbloquear_usuario",
+        )
+
+    async def eliminar_usuario_sistema(
+        self,
+        actualizacion: Update,
+        contexto: CallbackContext,
+    ) -> None:
+        await self._cambiar_estado_usuario(
+            actualizacion,
+            contexto,
+            "eliminar_usuario_sistema",
+            "eliminar junto con su directorio de usuario",
+            "eliminar_usuario",
         )
 
     async def _solicitar_accion_sensible(

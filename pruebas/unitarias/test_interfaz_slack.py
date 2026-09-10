@@ -66,9 +66,31 @@ def _servidor() -> ServidorResumen:
 
 
 def _resultado_individual(codigo: CodigoAccion) -> ResultadoAccionRespuesta:
-    datos: dict[str, str | int | float | bool | None]
+    datos: dict[str, object]
     if codigo is CodigoAccion.OBTENER_IDENTIDAD:
         datos = {"usuario": "operador", "nombre_equipo": "ubuntu-laboratorio"}
+    elif codigo is CodigoAccion.LISTAR_USUARIOS_SISTEMA:
+        datos = {
+            "usuarios": [
+                {
+                    "nombre_usuario": "usuario_01",
+                    "identificador": "1001",
+                    "estado": "habilitado",
+                    "cuenta_protegida": False,
+                    "grupos": ["operadores"],
+                }
+            ],
+            "total_usuarios": 1,
+        }
+    elif codigo is CodigoAccion.BLOQUEAR_USUARIO_SISTEMA:
+        datos = {
+            "nombre_usuario": "usuario_01",
+            "estado": "bloqueado",
+            "cuenta_protegida": False,
+            "nombre_grupo": None,
+            "operacion_grupo": None,
+            "accion_realizada": "bloqueo",
+        }
     else:
         datos = {"reinicio_programado": True, "demora_segundos": 60}
     return ResultadoAccionRespuesta(
@@ -261,6 +283,70 @@ async def test_confirmacion_multiple_es_de_un_solo_uso_y_fija_destinos(
     await adaptador.resolver_confirmacion(RespuestasSlack(), cuerpo, respuestas)
     assert "no es válida o ha caducado" in respuestas.llamadas[-1]["text"]
     assert gestor.ejecutar_accion_multiple.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_slack_lista_usuarios_mediante_el_motor_comun(
+    interfaz: tuple[InterfazSlack, AsyncMock],
+) -> None:
+    adaptador, gestor = interfaz
+    gestor.consultar_servidor.return_value = _servidor()
+    gestor.ejecutar_accion.return_value = _resultado_individual(
+        CodigoAccion.LISTAR_USUARIOS_SISTEMA
+    )
+    respuestas = RespuestasSlack()
+
+    await adaptador.recibir_comando(
+        RespuestasSlack(),
+        _comando("seleccionar 7"),
+        respuestas,
+    )
+    await adaptador.recibir_comando(RespuestasSlack(), _comando("usuarios"), respuestas)
+
+    assert "usuario_01 · id 1001 · habilitado" in respuestas.llamadas[-1]["text"]
+    assert gestor.ejecutar_accion.await_args.args[3] == "listar_usuarios_sistema"
+
+
+@pytest.mark.asyncio
+async def test_slack_bloqueo_usuario_exige_confirmacion_y_no_eleva_protegidos(
+    interfaz: tuple[InterfazSlack, AsyncMock],
+) -> None:
+    adaptador, gestor = interfaz
+    gestor.consultar_servidor.return_value = _servidor()
+    gestor.comprobar_accion_sensible.return_value = _servidor()
+    gestor.ejecutar_accion.return_value = _resultado_individual(
+        CodigoAccion.BLOQUEAR_USUARIO_SISTEMA
+    )
+    respuestas = RespuestasSlack()
+
+    await adaptador.recibir_comando(
+        RespuestasSlack(),
+        _comando("seleccionar 7"),
+        respuestas,
+    )
+    await adaptador.recibir_comando(
+        RespuestasSlack(),
+        _comando("bloquear_usuario usuario_01"),
+        respuestas,
+    )
+
+    solicitud_previa = gestor.comprobar_accion_sensible.await_args.args[4]
+    assert solicitud_previa.parametros == {
+        "nombre_usuario": "usuario_01",
+        "autorizar_cuenta_protegida": False,
+    }
+    bloques = respuestas.llamadas[-1]["blocks"]
+    codigo = bloques[1]["elements"][0]["value"]
+    cuerpo = {
+        "team": {"id": "T012ABCDEF"},
+        "user": {"id": "U012ABCDEF"},
+        "channel": {"id": "D012ABCDEF"},
+        "actions": [{"action_id": "hermes_confirmar", "value": codigo}],
+    }
+    await adaptador.resolver_confirmacion(RespuestasSlack(), cuerpo, respuestas)
+
+    assert gestor.ejecutar_accion.await_args.args[4].confirmar is True
+    assert "Estado: bloqueado" in respuestas.llamadas[-1]["text"]
 
 
 def test_configuracion_slack_exige_tokens_y_los_protege() -> None:
