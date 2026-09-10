@@ -121,6 +121,7 @@ if ($null -eq (Get-Command Get-LocalUser -ErrorAction SilentlyContinue)) {
 }
 Write-Output 'HERMES_ACCION=listar_usuarios_sistema'
 $usuario_actual = [Environment]::UserName
+$sids_grupos_protegidos = @('S-1-5-32-544', 'S-1-5-32-551', 'S-1-5-32-555', 'S-1-5-32-580')
 $usuarios = @(Get-LocalUser | Sort-Object -Property Name)
 foreach ($usuario in $usuarios) {
     $sid = [string]$usuario.SID.Value
@@ -129,16 +130,22 @@ foreach ($usuario in $usuarios) {
     [void][int]::TryParse($partes_sid[-1], [ref]$rid)
     $protegida = ($rid -lt 1000) -or ($usuario.Name -ieq $usuario_actual)
     $estado = if ($usuario.Enabled) { 'habilitado' } else { 'deshabilitado' }
-    Write-Output ('USUARIO|{0}|{1}|{2}|{3}' -f $usuario.Name, $sid, $estado, $protegida.ToString().ToLowerInvariant())
+    $grupos = @()
     try {
         $grupos = @(Get-LocalGroup | Where-Object {
             $miembros = @(Get-LocalGroupMember -Group $_ -ErrorAction Stop)
             $miembros.SID.Value -contains $sid
         } | Sort-Object -Property Name)
         foreach ($grupo in $grupos) {
-            Write-Output ('GRUPO|{0}|{1}' -f $usuario.Name, $grupo.Name)
+            if ([string]$grupo.SID.Value -in $sids_grupos_protegidos) {
+                $protegida = $true
+            }
         }
     } catch {}
+    Write-Output ('USUARIO|{0}|{1}|{2}|{3}' -f $usuario.Name, $sid, $estado, $protegida.ToString().ToLowerInvariant())
+    foreach ($grupo in $grupos) {
+        Write-Output ('GRUPO|{0}|{1}' -f $usuario.Name, $grupo.Name)
+    }
 }
 """
         return cls._envolver_guion(CodigoAccion.LISTAR_USUARIOS_SISTEMA, guion)
@@ -181,6 +188,15 @@ $rid = 0
 [void][int]::TryParse($partes_sid[-1], [ref]$rid)
 $usuario_actual = [Environment]::UserName
 $cuenta_protegida = ($rid -lt 1000) -or ($nombre_usuario -ieq $usuario_actual)
+foreach ($sid_grupo_protegido in @('S-1-5-32-544', 'S-1-5-32-551', 'S-1-5-32-555', 'S-1-5-32-580')) {{
+    try {{
+        $grupo_protegido = Get-LocalGroup -SID $sid_grupo_protegido -ErrorAction Stop
+        $miembros_protegidos = @(Get-LocalGroupMember -Group $grupo_protegido -ErrorAction Stop)
+        if ($miembros_protegidos.SID.Value -contains $sid) {{
+            $cuenta_protegida = $true
+        }}
+    }} catch {{}}
+}}
 {validar_operador}
 if ($cuenta_protegida -and -not $autorizar_cuenta_protegida) {{
     Write-Output 'HERMES_ERROR=cuenta_sistema_protegida'

@@ -132,6 +132,8 @@ def test_linux_prepara_operaciones_controladas_sin_recibir_contrasenas() -> None
     assert "useradd" in creacion and "--expiredate 1" in creacion
     assert "usermod --append --groups" in agregar
     assert "usermod --lock --expiredate 1" in bloqueo
+    assert "sudo|wheel|root|adm|shadow|docker" in bloqueo
+    assert '"$uid_usuario" -eq 65534' in bloqueo
     assert "userdel --remove" in eliminacion
     assert "shell=True" not in "\n".join((creacion, agregar, bloqueo, eliminacion))
 
@@ -172,6 +174,8 @@ def test_windows_prepara_cmdlets_locales_documentados() -> None:
     assert "-NoPassword" in creacion and "-Disabled" in creacion
     assert "Remove-LocalGroupMember -Group $grupo" in cambio
     assert "Enable-LocalUser -InputObject $usuario" in desbloqueo
+    assert "S-1-5-32-544" in desbloqueo
+    assert "Get-LocalGroupMember -Group $grupo_protegido" in desbloqueo
 
 
 @pytest.mark.parametrize("adaptador", [AdaptadorLinux(), AdaptadorWindows()])

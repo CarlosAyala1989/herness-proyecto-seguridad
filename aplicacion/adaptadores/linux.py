@@ -179,10 +179,20 @@ getent passwd | while IFS=: read -r nombre _ uid _ _ _ _; do
         NP) estado=sin_contrasena ;;
     esac
     protegida=false
-    case "$uid" in ''|*[!0-9]*) protegida=true ;; *) [ "$uid" -lt "$uid_min" ] && protegida=true ;; esac
+    case "$uid" in
+        ''|*[!0-9]*) protegida=true ;;
+        *)
+            if [ "$uid" -lt "$uid_min" ] || [ "$uid" -eq 65534 ]; then
+                protegida=true
+            fi
+            ;;
+    esac
     [ "$nombre" = "$usuario_actual" ] && protegida=true
-    printf 'USUARIO|%s|%s|%s|%s\n' "$nombre" "$uid" "$estado" "$protegida"
     grupos=$(id -nG "$nombre" 2>/dev/null) || grupos=
+    for grupo in $grupos; do
+        case "$grupo" in sudo|wheel|root|adm|shadow|docker) protegida=true ;; esac
+    done
+    printf 'USUARIO|%s|%s|%s|%s\n' "$nombre" "$uid" "$estado" "$protegida"
     for grupo in $grupos; do
         printf 'GRUPO|%s|%s\n' "$nombre" "$grupo"
     done
@@ -231,9 +241,19 @@ usuario_actual=$(id -un 2>/dev/null)
 cuenta_protegida=false
 case "$uid_usuario" in
     ''|*[!0-9]*) cuenta_protegida=true ;;
-    *) [ "$uid_usuario" -lt "$uid_min" ] && cuenta_protegida=true ;;
+    *)
+        if [ "$uid_usuario" -lt "$uid_min" ] || [ "$uid_usuario" -eq 65534 ]; then
+            cuenta_protegida=true
+        fi
+        ;;
 esac
 [ "$nombre_usuario" = "$usuario_actual" ] && cuenta_protegida=true
+grupos_usuario=$(id -nG "$nombre_usuario" 2>/dev/null) || grupos_usuario=
+for grupo_usuario in $grupos_usuario; do
+    case "$grupo_usuario" in
+        sudo|wheel|root|adm|shadow|docker) cuenta_protegida=true ;;
+    esac
+done
 {validar_operador}
 if [ "$cuenta_protegida" = true ] && [ "$autorizar_cuenta_protegida" != true ]; then
     printf 'HERMES_ERROR=cuenta_sistema_protegida\n'
