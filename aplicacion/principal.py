@@ -21,6 +21,7 @@ from aplicacion.rutas.conexiones import enrutador as enrutador_conexiones
 from aplicacion.rutas.inventario import enrutador as enrutador_inventario
 from aplicacion.rutas.monitoreo import enrutador as enrutador_monitoreo
 from aplicacion.rutas.salud import enrutador as enrutador_salud
+from aplicacion.rutas.tareas import enrutador as enrutador_tareas
 
 registrador = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def crear_aplicacion(
     aplicacion.include_router(enrutador_auditoria)
     aplicacion.include_router(enrutador_conexiones)
     aplicacion.include_router(enrutador_monitoreo)
+    aplicacion.include_router(enrutador_tareas)
     return aplicacion
 
 

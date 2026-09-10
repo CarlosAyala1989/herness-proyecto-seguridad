@@ -106,6 +106,16 @@ class Configuracion(BaseSettings):
             raise ValueError("Slack está habilitado pero el token de aplicación no es válido.")
         return self
 
+    @model_validator(mode="after")
+    def validar_bloqueo_tareas(self) -> "Configuracion":
+        """Mantiene el bloqueo por encima del plazo máximo de una acción."""
+
+        if self.duracion_bloqueo_tarea_segundos <= self.tiempo_limite_accion_multiple_segundos:
+            raise ValueError(
+                "La duración del bloqueo de tareas debe superar el tiempo límite de acciones."
+            )
+        return self
+
     def construir_url_base_datos(self) -> URL:
         """Construye la URL sin concatenar ni registrar la contraseña en texto claro."""
 

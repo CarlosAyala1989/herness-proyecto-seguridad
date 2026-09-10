@@ -33,6 +33,33 @@ def _columna_fecha(nombre: str) -> sa.Column:
 def upgrade() -> None:
     """Crea el calendario, su historial idempotente y sus notificaciones."""
 
+    op.alter_column(
+        "registros_auditoria",
+        "tipo_recurso",
+        existing_type=sa.Enum(
+            "servidor",
+            "grupo",
+            "usuario",
+            "rol",
+            "permiso",
+            "asociacion",
+            "autenticacion",
+            name="tipo_recurso_auditoria",
+        ),
+        type_=sa.Enum(
+            "servidor",
+            "grupo",
+            "usuario",
+            "rol",
+            "permiso",
+            "asociacion",
+            "autenticacion",
+            "tarea",
+            name="tipo_recurso_auditoria",
+        ),
+        existing_nullable=False,
+    )
+
     op.create_table(
         "tareas_programadas",
         sa.Column("id_tarea_programada", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -250,3 +277,35 @@ def downgrade() -> None:
     op.drop_table("notificaciones_tareas")
     op.drop_table("ejecuciones_tareas")
     op.drop_table("tareas_programadas")
+    op.execute(
+        sa.text(
+            "UPDATE registros_auditoria SET tipo_recurso = 'asociacion' "
+            "WHERE tipo_recurso = 'tarea'"
+        )
+    )
+    op.alter_column(
+        "registros_auditoria",
+        "tipo_recurso",
+        existing_type=sa.Enum(
+            "servidor",
+            "grupo",
+            "usuario",
+            "rol",
+            "permiso",
+            "asociacion",
+            "autenticacion",
+            "tarea",
+            name="tipo_recurso_auditoria",
+        ),
+        type_=sa.Enum(
+            "servidor",
+            "grupo",
+            "usuario",
+            "rol",
+            "permiso",
+            "asociacion",
+            "autenticacion",
+            name="tipo_recurso_auditoria",
+        ),
+        existing_nullable=False,
+    )
