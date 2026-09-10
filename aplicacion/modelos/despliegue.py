@@ -143,6 +143,7 @@ class DespliegueAplicacion(ModeloBase):
     version_anterior: Mapped[str | None] = mapped_column(String(64))
     ruta_artefacto: Mapped[str] = mapped_column(String(1024), nullable=False)
     ruta_respaldo: Mapped[str | None] = mapped_column(String(1024))
+    hash_respaldo_sha256: Mapped[str | None] = mapped_column(String(64))
     hash_sha256: Mapped[str | None] = mapped_column(String(64))
     estado: Mapped[EstadoDespliegue] = mapped_column(
         Enum(

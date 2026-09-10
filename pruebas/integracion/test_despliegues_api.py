@@ -343,6 +343,18 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         id_version_dos = version_dos.json()["id_despliegue_aplicacion"]
         assert TransporteDespliegueSimulado.archivos[destino] == b"version dos"
 
+        ruta_respaldo = f"{destino}.hermes-respaldo-{id_version_dos}"
+        TransporteDespliegueSimulado.archivos[ruta_respaldo] = b"respaldo alterado"
+        reversion_alterada = await cliente.post(
+            f"{raiz_despliegue}/despliegues/{id_version_dos}/revertir",
+            auth=credencial_admin,
+            json={"confirmar": True},
+        )
+        assert reversion_alterada.status_code == 502
+        assert reversion_alterada.json()["codigo"] == "aplicacion_no_operativa"
+        assert TransporteDespliegueSimulado.archivos[destino] == b"version dos"
+        TransporteDespliegueSimulado.archivos[ruta_respaldo] = b"version uno"
+
         reversion = await cliente.post(
             f"{raiz_despliegue}/despliegues/{id_version_dos}/revertir",
             auth=credencial_admin,

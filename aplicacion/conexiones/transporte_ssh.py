@@ -313,6 +313,11 @@ class TransporteSSHAsync:
             async with asyncio.timeout(tiempo_limite_segundos):
                 conexion = await self._conectar()
                 async with conexion.start_sftp_client() as cliente:
+                    atributos_originales = await cliente.lstat(ruta_remota)
+                    if atributos_originales.type == asyncssh.FILEXFER_TYPE_SYMLINK:
+                        raise ErrorArchivoRemotoNoCompatible(
+                            "No se permite eliminar mediante un enlace simbólico."
+                        )
                     ruta_canonica = await self._resolver_ruta_existente_autorizada(
                         cliente, ruta_remota, rutas_permitidas
                     )

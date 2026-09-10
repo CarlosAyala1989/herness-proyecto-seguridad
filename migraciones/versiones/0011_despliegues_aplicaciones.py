@@ -159,6 +159,7 @@ def upgrade() -> None:
         sa.Column("version_anterior", sa.String(length=64), nullable=True),
         sa.Column("ruta_artefacto", sa.String(length=1024), nullable=False),
         sa.Column("ruta_respaldo", sa.String(length=1024), nullable=True),
+        sa.Column("hash_respaldo_sha256", sa.String(length=64), nullable=True),
         sa.Column("hash_sha256", sa.String(length=64), nullable=True),
         sa.Column(
             "estado",

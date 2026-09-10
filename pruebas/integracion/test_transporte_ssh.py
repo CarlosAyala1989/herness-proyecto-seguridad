@@ -6,11 +6,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 import asyncssh
 import pytest
+from sqlalchemy import delete, select
 
 from aplicacion.adaptadores.linux import AdaptadorLinux
+from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.conexiones.errores import (
     ErrorAutenticacionSSH,
     ErrorIdentidadServidorSSH,
@@ -20,12 +23,30 @@ from aplicacion.conexiones.errores import (
 from aplicacion.conexiones.transporte_ssh import TransporteSSHAsync
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import (
+    ErrorArchivoRemotoNoCompatible,
     ErrorConflictoDatos,
     ErrorRecursoNoEncontrado,
     ErrorRutaRemotaNoPermitida,
 )
-from aplicacion.modelos.enumeraciones import SistemaOperativo, TipoCredencialConexion
+from aplicacion.esquemas.despliegues import SolicitudDespliegue
+from aplicacion.modelos.acceso import Rol, Usuario
+from aplicacion.modelos.despliegue import (
+    AplicacionAdministrada,
+    PlantillaDespliegue,
+)
+from aplicacion.modelos.enumeraciones import (
+    SistemaOperativo,
+    TipoCredencialConexion,
+    TipoPlantillaDespliegue,
+)
+from aplicacion.modelos.registro_auditoria import RegistroAuditoria
+from aplicacion.modelos.ruta_archivo_permitida import RutaArchivoPermitida
 from aplicacion.modelos.servidor import Servidor
+from aplicacion.seguridad.contrasenas import generar_hash_contrasena
+from aplicacion.servicios.gestor_despliegues import (
+    desplegar_aplicacion,
+    revertir_despliegue,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +291,9 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
             4_096,
             True,
         )
+        (laboratorio.raiz_sftp / "intercambio" / "enlace_interno").symlink_to("prueba.txt")
+        with pytest.raises(ErrorArchivoRemotoNoCompatible):
+            await transporte.eliminar_archivo("/intercambio/enlace_interno", ("/intercambio",), 2)
         with pytest.raises(ErrorRutaRemotaNoPermitida):
             await transporte.consultar_informacion_archivo("/fuera.txt", ("/intercambio",), 2)
         with pytest.raises(ErrorRutaRemotaNoPermitida):
@@ -290,3 +314,105 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
     assert informacion_descarga.nombre_archivo == "prueba.txt"
     assert contenido == b"contenido seguro de prueba"
     assert not (laboratorio.raiz_sftp / "intercambio" / "prueba.txt").exists()
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_despliega_y_revierte_archivo_en_laboratorio_ssh_real(
+    tmp_path: Path,
+) -> None:
+    """Demuestra el flujo Linux completo sin modificar el Ubuntu anfitrión."""
+
+    configuracion_base = Configuracion()  # type: ignore[call-arg]
+    motor = crear_motor_base_datos(configuracion_base)
+    fabrica_sesiones = crear_fabrica_sesiones(motor)
+    nombre_usuario = f"despliegue-ssh-{uuid4().hex[:10]}"
+    nombre_plantilla = f"plantilla-{nombre_usuario}"
+    try:
+        async with _crear_laboratorio_ssh(tmp_path) as laboratorio:
+            configuracion = _crear_configuracion(configuracion_base, laboratorio)
+            (laboratorio.raiz_sftp / "intercambio" / "api-1.0.bin").write_bytes(
+                b"aplicacion version uno"
+            )
+            (laboratorio.raiz_sftp / "intercambio" / "api.bin").write_bytes(b"aplicacion anterior")
+            async with fabrica_sesiones() as sesion:
+                rol = await sesion.scalar(select(Rol).where(Rol.nombre == "administrador"))
+                assert rol is not None
+                usuario = Usuario(
+                    nombre_usuario=nombre_usuario,
+                    nombre_mostrar="Despliegue SSH efímero",
+                    hash_contrasena=generar_hash_contrasena("clave-efimera-despliegue"),
+                    activo=True,
+                    roles=[rol],
+                )
+                servidor = _crear_servidor(laboratorio)
+                servidor.nombre = f"servidor-{nombre_usuario}"
+                servidor.id_servidor = None  # type: ignore[assignment]
+                servidor.rutas_archivos_permitidas = [
+                    RutaArchivoPermitida(
+                        ruta="/intercambio",
+                        permite_lectura=True,
+                        permite_escritura=True,
+                        activo=True,
+                    )
+                ]
+                plantilla = PlantillaDespliegue(
+                    nombre=nombre_plantilla,
+                    sistema_operativo=SistemaOperativo.LINUX,
+                    tipo=TipoPlantillaDespliegue.ARCHIVO_UNICO,
+                    ruta_destino="/intercambio/api.bin",
+                    activo=True,
+                )
+                aplicacion = AplicacionAdministrada(
+                    nombre=f"api-{nombre_usuario}",
+                    servidor=servidor,
+                    plantilla=plantilla,
+                    activo=True,
+                )
+                sesion.add_all([usuario, aplicacion])
+                await sesion.commit()
+
+                despliegue = await desplegar_aplicacion(
+                    sesion,
+                    aplicacion.id_aplicacion_administrada,
+                    SolicitudDespliegue(
+                        version="1.0.0",
+                        ruta_artefacto="/intercambio/api-1.0.bin",
+                        confirmar=True,
+                    ),
+                    usuario,
+                    lambda equipo: TransporteSSHAsync(equipo, configuracion),
+                    configuracion,
+                )
+                assert despliegue.estado.value == "completado"
+                assert (laboratorio.raiz_sftp / "intercambio" / "api.bin").read_bytes() == (
+                    b"aplicacion version uno"
+                )
+
+                revertido = await revertir_despliegue(
+                    sesion,
+                    aplicacion.id_aplicacion_administrada,
+                    despliegue.id_despliegue_aplicacion,
+                    usuario,
+                    lambda equipo: TransporteSSHAsync(equipo, configuracion),
+                    configuracion,
+                    True,
+                )
+                assert revertido.estado.value == "revertido"
+                assert (laboratorio.raiz_sftp / "intercambio" / "api.bin").read_bytes() == (
+                    b"aplicacion anterior"
+                )
+    finally:
+        async with fabrica_sesiones() as sesion:
+            await sesion.execute(
+                delete(RegistroAuditoria).where(RegistroAuditoria.nombre_usuario == nombre_usuario)
+            )
+            await sesion.execute(
+                delete(Servidor).where(Servidor.nombre == f"servidor-{nombre_usuario}")
+            )
+            await sesion.execute(
+                delete(PlantillaDespliegue).where(PlantillaDespliegue.nombre == nombre_plantilla)
+            )
+            await sesion.execute(delete(Usuario).where(Usuario.nombre_usuario == nombre_usuario))
+            await sesion.commit()
+        await motor.dispose()

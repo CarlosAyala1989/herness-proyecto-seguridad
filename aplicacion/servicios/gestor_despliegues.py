@@ -248,6 +248,10 @@ async def validar_preparacion_reversion(
 ) -> DespliegueAplicacion:
     """Exige que el historial indicado represente exactamente la versión vigente."""
 
+    if not aplicacion.servidor.activo:
+        raise ErrorServidorInactivo()
+    if not aplicacion.activo or not aplicacion.plantilla.activo:
+        raise ErrorConflictoDatos("La aplicación o su plantilla está inactiva.")
     despliegue = await sesion.scalar(
         select(DespliegueAplicacion).where(
             DespliegueAplicacion.id_despliegue_aplicacion == id_despliegue,
@@ -413,6 +417,7 @@ async def desplegar_aplicacion(
                 False,
             )
             despliegue.ruta_respaldo = ruta_respaldo
+            despliegue.hash_respaldo_sha256 = sha256(contenido_anterior).hexdigest()
         await transporte.cargar_archivo(
             ruta_destino,
             artefacto,
@@ -539,6 +544,11 @@ async def revertir_despliegue(
                 configuracion.limite_archivo_transferencia_bytes,
                 configuracion.tamano_bloque_transferencia_bytes,
             )
+            if (
+                despliegue.hash_respaldo_sha256 is None
+                or sha256(respaldo).hexdigest() != despliegue.hash_respaldo_sha256
+            ):
+                raise ErrorAplicacionNoOperativa()
             await transporte.cargar_archivo(
                 ruta_destino,
                 respaldo,
@@ -602,6 +612,10 @@ async def consultar_estado_aplicacion(
     aplicacion = await obtener_aplicacion(sesion, id_aplicacion)
     servidor = aplicacion.servidor
     plantilla = aplicacion.plantilla
+    if not servidor.activo:
+        raise ErrorServidorInactivo()
+    if not aplicacion.activo or not plantilla.activo:
+        raise ErrorConflictoDatos("La aplicación o su plantilla está inactiva.")
     _, rutas_lectura = resolver_rutas_habilitadas(servidor, plantilla.ruta_destino, escritura=False)
     despliegue = None
     if aplicacion.version_actual is not None:
