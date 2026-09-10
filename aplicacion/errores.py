@@ -145,6 +145,51 @@ class ErrorLimiteSeleccionServidores(ErrorHermes):
         )
 
 
+class ErrorRutaRemotaNoValida(ErrorHermes):
+    """Rechaza rutas ambiguas, relativas o propias de otra plataforma."""
+
+    def __init__(self, mensaje: str = "La ruta remota no tiene un formato seguro y válido.") -> None:
+        super().__init__(
+            mensaje,
+            codigo="ruta_remota_no_valida",
+            estado_http=HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
+
+
+class ErrorRutaRemotaNoPermitida(ErrorHermes):
+    """Impide acceder fuera de las raíces autorizadas del servidor."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "La ruta remota no está autorizada para esta operación.",
+            codigo="ruta_remota_no_permitida",
+            estado_http=HTTPStatus.FORBIDDEN,
+        )
+
+
+class ErrorLimiteArchivoExcedido(ErrorHermes):
+    """Detiene una transferencia que supera el presupuesto configurado."""
+
+    def __init__(self, maximo_bytes: int) -> None:
+        super().__init__(
+            "El archivo supera el tamaño máximo permitido.",
+            codigo="limite_archivo_superado",
+            estado_http=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            detalles=[{"maximo_bytes": maximo_bytes}],
+        )
+
+
+class ErrorArchivoRemotoNoCompatible(ErrorHermes):
+    """Representa tipos de archivo u operaciones no admitidas."""
+
+    def __init__(self, mensaje: str = "La operación no es compatible con el archivo remoto.") -> None:
+        super().__init__(
+            mensaje,
+            codigo="archivo_remoto_no_compatible",
+            estado_http=HTTPStatus.CONFLICT,
+        )
+
+
 def _identificador_solicitud(solicitud: Request) -> str:
     return getattr(solicitud.state, "identificador_solicitud", "no_disponible")
 

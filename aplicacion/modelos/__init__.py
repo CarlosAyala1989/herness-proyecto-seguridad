@@ -12,6 +12,7 @@ from aplicacion.modelos.monitoreo import (
     SuscripcionAlerta,
 )
 from aplicacion.modelos.registro_auditoria import RegistroAuditoria
+from aplicacion.modelos.ruta_archivo_permitida import RutaArchivoPermitida
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.modelos.tarea_programada import (
     EjecucionTarea,
@@ -30,6 +31,7 @@ __all__ = [
     "ModeloBase",
     "Permiso",
     "RegistroAuditoria",
+    "RutaArchivoPermitida",
     "Rol",
     "Servidor",
     "Usuario",

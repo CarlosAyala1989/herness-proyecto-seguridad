@@ -65,6 +65,11 @@ class Servidor(FechasRegistro, ModeloBase):
         back_populates="servidores",
         lazy="selectin",
     )
+    rutas_archivos_permitidas: Mapped[list[RutaArchivoPermitida]] = relationship(
+        back_populates="servidor",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     @property
     def ids_grupos(self) -> list[int]:
@@ -74,3 +79,4 @@ class Servidor(FechasRegistro, ModeloBase):
 
 
 from aplicacion.modelos.grupo_servidor import GrupoServidor  # noqa: E402
+from aplicacion.modelos.ruta_archivo_permitida import RutaArchivoPermitida  # noqa: E402

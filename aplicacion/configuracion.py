@@ -42,6 +42,10 @@ class Configuracion(BaseSettings):
     tiempo_autenticacion_ssh_segundos: float = Field(default=10.0, gt=0, le=120)
     tiempo_operacion_ssh_segundos: float = Field(default=15.0, gt=0, le=300)
     limite_salida_ssh_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
+    limite_archivo_transferencia_bytes: int = Field(
+        default=8_388_608, ge=1_024, le=52_428_800
+    )
+    tamano_bloque_transferencia_bytes: int = Field(default=65_536, ge=4_096, le=1_048_576)
     intervalo_mantenimiento_ssh_segundos: float = Field(default=15.0, gt=0, le=300)
     max_intentos_mantenimiento_ssh: int = Field(default=3, ge=1, le=10)
     max_concurrencia_acciones_multiples: int = Field(default=4, ge=1, le=32)
