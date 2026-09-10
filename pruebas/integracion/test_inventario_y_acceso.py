@@ -105,6 +105,53 @@ class TransporteRemotoSimulado:
                     f"estado_nativo={estado_nativo}\n"
                     "inicio_automatico=true\n"
                 )
+            elif "HERMES_ACCION=listar_usuarios_sistema" in comando_legible:
+                identificador = (
+                    "1001" if self.servidor.sistema_operativo.value == "linux" else "S-1-5-21-1000"
+                )
+                salida = (
+                    "HERMES_ACCION=listar_usuarios_sistema\n"
+                    f"USUARIO|usuario_h12|{identificador}|habilitado|false\n"
+                    "GRUPO|usuario_h12|operadores\n"
+                )
+            elif any(
+                f"HERMES_ACCION={accion}" in comando_legible
+                for accion in (
+                    "crear_usuario_sistema",
+                    "cambiar_grupo_usuario_sistema",
+                    "bloquear_usuario_sistema",
+                    "desbloquear_usuario_sistema",
+                    "eliminar_usuario_sistema",
+                )
+            ):
+                codigo_accion = next(
+                    accion
+                    for accion in (
+                        "crear_usuario_sistema",
+                        "cambiar_grupo_usuario_sistema",
+                        "bloquear_usuario_sistema",
+                        "desbloquear_usuario_sistema",
+                        "eliminar_usuario_sistema",
+                    )
+                    if f"HERMES_ACCION={accion}" in comando_legible
+                )
+                estados = {
+                    "crear_usuario_sistema": "deshabilitado",
+                    "cambiar_grupo_usuario_sistema": "actualizado",
+                    "bloquear_usuario_sistema": "bloqueado",
+                    "desbloquear_usuario_sistema": "habilitado",
+                    "eliminar_usuario_sistema": "eliminado",
+                }
+                es_grupo = codigo_accion == "cambiar_grupo_usuario_sistema"
+                operacion = "agregar" if "operacion_grupo=agregar" in comando_legible else "quitar"
+                salida = (
+                    f"HERMES_ACCION={codigo_accion}\n"
+                    "nombre_usuario=usuario_h12\n"
+                    f"estado={estados[codigo_accion]}\n"
+                    "cuenta_protegida=false\n"
+                    f"nombre_grupo={'operadores' if es_grupo else 'no_aplica'}\n"
+                    f"operacion_grupo={operacion if es_grupo else 'no_aplica'}\n"
+                )
             elif "/proc/stat" in comando_legible or "Win32_Processor" in comando_legible:
                 sistema = (
                     "Linux"
@@ -335,9 +382,15 @@ async def test_crud_persistente_permisos_y_auditoria(
             "iniciar_servicio",
             "detener_servicio",
             "reiniciar_servicio",
+            "listar_usuarios_sistema",
+            "crear_usuario_sistema",
+            "cambiar_grupo_usuario_sistema",
+            "bloquear_usuario_sistema",
+            "desbloquear_usuario_sistema",
+            "eliminar_usuario_sistema",
         }
         assert acciones_lector.status_code == 200
-        assert acciones_lector.json() == []
+        assert {item["codigo"] for item in acciones_lector.json()} == {"listar_usuarios_sistema"}
 
         accion_denegada = await cliente.post(
             f"/api/v1/servidores/{id_primer_servidor}/acciones/obtener_identidad",
@@ -374,6 +427,92 @@ async def test_crud_persistente_permisos_y_auditoria(
             assert servicio.status_code == 200, servicio.text
             assert servicio.json()["datos"]["estado"] == "activo"
             assert servicio.json()["datos"]["nombre_servicio"] == "hermes-prueba.service"
+
+            usuarios = await cliente.post(
+                f"/api/v1/servidores/{servidor['id_servidor']}/acciones/listar_usuarios_sistema",
+                auth=autenticacion_lector,
+                json={},
+            )
+            assert usuarios.status_code == 200, usuarios.text
+            assert usuarios.json()["datos"]["total_usuarios"] == 1
+            assert usuarios.json()["datos"]["usuarios"][0]["nombre_usuario"] == "usuario_h12"
+
+            creacion_sin_confirmar = await cliente.post(
+                f"/api/v1/servidores/{servidor['id_servidor']}/acciones/crear_usuario_sistema",
+                auth=autenticacion_admin,
+                json={"parametros": {"nombre_usuario": "usuario_h12"}},
+            )
+            assert creacion_sin_confirmar.status_code == 400
+            assert creacion_sin_confirmar.json()["codigo"] == "confirmacion_requerida"
+
+            for codigo_accion, parametros, estado_esperado in (
+                (
+                    "crear_usuario_sistema",
+                    {"nombre_usuario": "usuario_h12", "nombre_mostrar": "Usuario Hito 12"},
+                    "deshabilitado",
+                ),
+                (
+                    "cambiar_grupo_usuario_sistema",
+                    {
+                        "nombre_usuario": "usuario_h12",
+                        "nombre_grupo": "operadores",
+                        "operacion_grupo": "agregar",
+                        "autorizar_cuenta_protegida": False,
+                    },
+                    "actualizado",
+                ),
+                (
+                    "bloquear_usuario_sistema",
+                    {
+                        "nombre_usuario": "usuario_h12",
+                        "autorizar_cuenta_protegida": False,
+                    },
+                    "bloqueado",
+                ),
+                (
+                    "desbloquear_usuario_sistema",
+                    {
+                        "nombre_usuario": "usuario_h12",
+                        "autorizar_cuenta_protegida": False,
+                    },
+                    "habilitado",
+                ),
+                (
+                    "eliminar_usuario_sistema",
+                    {
+                        "nombre_usuario": "usuario_h12",
+                        "autorizar_cuenta_protegida": False,
+                    },
+                    "eliminado",
+                ),
+            ):
+                mutacion = await cliente.post(
+                    f"/api/v1/servidores/{servidor['id_servidor']}/acciones/{codigo_accion}",
+                    auth=autenticacion_admin,
+                    json={"parametros": parametros, "confirmar": True},
+                )
+                assert mutacion.status_code == 200, mutacion.text
+                assert mutacion.json()["datos"]["estado"] == estado_esperado
+
+        gestion_usuario_denegada = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/bloquear_usuario_sistema",
+            auth=autenticacion_lector,
+            json={
+                "parametros": {"nombre_usuario": "usuario_h12"},
+                "confirmar": True,
+            },
+        )
+        assert gestion_usuario_denegada.status_code == 403
+
+        usuario_malicioso = await cliente.post(
+            f"/api/v1/servidores/{id_primer_servidor}/acciones/crear_usuario_sistema",
+            auth=autenticacion_admin,
+            json={
+                "parametros": {"nombre_usuario": "usuario; id"},
+                "confirmar": True,
+            },
+        )
+        assert usuario_malicioso.status_code == 422
 
         grupo_multiple = await cliente.post(
             "/api/v1/grupos",
@@ -624,6 +763,10 @@ async def test_crud_persistente_permisos_y_auditoria(
             "consultar_diagnostico",
             "consultar_servicios",
             "gestionar_servicios",
+            "consultar_usuarios_sistema",
+            "gestionar_usuarios_sistema",
+            "gestionar_usuarios_protegidos",
+            "eliminar_usuarios_sistema",
         }
 
         rol_auditor = next(item for item in roles.json() if item["nombre"] == "auditor")
@@ -641,7 +784,10 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert "hash_contrasena" not in usuario_nuevo.text
         assert "usuario-nuevo-prueba-seguro" not in usuario_nuevo.text
 
-        auditoria = await cliente.get("/api/v1/auditoria", auth=autenticacion_admin)
+        auditoria = await cliente.get(
+            "/api/v1/auditoria?limite=100",
+            auth=autenticacion_admin,
+        )
         assert auditoria.status_code == 200
         acciones = {item["accion"] for item in auditoria.json()}
         assert "crear_servidor" in acciones
@@ -652,6 +798,12 @@ async def test_crud_persistente_permisos_y_auditoria(
         assert "ejecutar_accion_consultar_servicio" in acciones
         assert "ejecutar_accion_detener_servicio" in acciones
         assert "ejecutar_accion_reiniciar_servidor" in acciones
+        assert "ejecutar_accion_listar_usuarios_sistema" in acciones
+        assert "ejecutar_accion_crear_usuario_sistema" in acciones
+        assert "ejecutar_accion_cambiar_grupo_usuario_sistema" in acciones
+        assert "ejecutar_accion_bloquear_usuario_sistema" in acciones
+        assert "ejecutar_accion_desbloquear_usuario_sistema" in acciones
+        assert "ejecutar_accion_eliminar_usuario_sistema" in acciones
 
         sin_confirmacion = await cliente.delete(
             f"/api/v1/servidores/{servidores[1]['id_servidor']}",
