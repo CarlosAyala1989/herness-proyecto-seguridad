@@ -22,6 +22,13 @@ rechaza recursos UNC y la raíz completa de una unidad.
 
 El subsistema SFTP de OpenSSH debe estar habilitado. Hermes no instala ni cambia
 OpenSSH y no necesita `sudo` para transferir cuando la cuenta posee la raíz.
+En Linux se comprueba por SFTP que todos los directorios de la ruta canónica
+pertenezcan a `root` o a la cuenta SSH y que terceros no puedan modificarlos;
+un directorio con escritura de grupo u otros se rechaza, salvo un directorio
+con bit *sticky*. La cuenta SSH debe tener acceso de lectura a los metadatos.
+En Windows aplica ACL NTFS equivalentes: ninguna otra cuenta no confiable debe
+poder renombrar o sustituir componentes del camino. Esta política debe
+comprobarse en la VM antes de habilitar transferencias.
 
 ## Registrar la lista blanca
 
@@ -116,7 +123,8 @@ pytest -o addopts='' -m integracion -q \
 ```
 
 La primera prueba levanta un servidor SSH/SFTP efímero real y verifica carga,
-descarga, consulta, creación exclusiva y confinamiento. La segunda recorre API,
+descarga, consulta, creación exclusiva, confinamiento y rechazo de directorios
+Linux modificables por terceros. La segunda recorre API,
 MariaDB, roles y auditoría con el transporte aislado. En este entorno no se ha
 aportado una VM Windows Server ni credenciales de Telegram o Slack, por lo que
 esas comprobaciones externas deben ejecutarse después siguiendo sus guías; no se

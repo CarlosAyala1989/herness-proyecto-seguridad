@@ -238,6 +238,7 @@ def test_servicio_retirado_genera_condicion_de_cierre() -> None:
 async def test_notificador_slack_extrae_usuario_y_rechaza_destino_invalido() -> None:
     notificador = NotificadorSlack("xoxb-token-solo-pruebas")
     cliente = AsyncMock()
+    cliente.auth_test.return_value = {"team_id": "T012PRUEBA"}
     notificador._cliente = cliente
 
     await notificador.enviar_mensaje("T012PRUEBA:U012PRUEBA", "Alerta de prueba")
@@ -245,6 +246,11 @@ async def test_notificador_slack_extrae_usuario_y_rechaza_destino_invalido() -> 
         channel="U012PRUEBA",
         text="Alerta de prueba",
     )
+    cliente.auth_test.assert_awaited_once_with()
+
+    with pytest.raises(ValueError, match="otro espacio"):
+        await notificador.enviar_mensaje("T999OTRO:U012PRUEBA", "Alerta privada")
+    cliente.chat_postMessage.assert_awaited_once()
 
     with pytest.raises(ValueError):
         await notificador.enviar_mensaje("destino-invalido", "Alerta")

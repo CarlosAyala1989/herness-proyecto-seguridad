@@ -10,7 +10,11 @@ También dispone de despliegues de archivo único con verificación y reversión
 
 ## Estado actual
 
-Hitos 1 a 14 completados. Hermes 0.14.0 proporciona:
+Hitos 1 a 14 implementados y comprobados mediante pruebas locales. La
+aceptación con servicios externos y máquinas virtuales reales sigue los
+pendientes descritos en
+[`documentacion/auditoria_hitos_1_14.md`](documentacion/auditoria_hitos_1_14.md).
+Hermes 0.14.1 proporciona:
 
 - backend FastAPI con ciclo de vida controlado;
 - configuración validada mediante variables de entorno;

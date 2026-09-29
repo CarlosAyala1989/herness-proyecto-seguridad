@@ -102,8 +102,8 @@ frases de paso ni las solicita mediante la API.
 - Instala y habilita OpenSSH Server dentro de la máquina autorizada.
 - Crea preferentemente una cuenta dedicada sin acceso administrativo general.
 - Autoriza solo la clave de Hermes y limita su origen cuando la red sea fija.
-- No concedas `sudo` global. Los permisos mínimos para acciones concretas se
-  definirán junto con el registro de comandos del hito 4.
+- No concedas `sudo` global. Usa únicamente los permisos mínimos requeridos
+  por las acciones autorizadas del catálogo descrito en `motor_acciones.md`.
 
 Para el ensayo sobre este Ubuntu se reutilizó temporalmente el usuario local
 porque no hay autorización `sudo` no interactiva para crear una cuenta nueva.

@@ -175,4 +175,5 @@ Estas pruebas no contactan servidores reales ni alteran servicios del
 anfitrión. La comprobación con cuatro máquinas virtuales reales queda pendiente
 de disponer del laboratorio Linux y Windows Server autorizado.
 
-Slack, el monitoreo automático y las alertas pertenecen a los hitos 9 y 10.
+Slack, el monitoreo automático y las alertas reutilizan este orquestador desde
+los hitos 9 y 10.

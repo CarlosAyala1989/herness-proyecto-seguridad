@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from aplicacion import __version__
 from aplicacion.rutas import salud as modulo_salud
 
 
@@ -31,7 +32,7 @@ async def test_salud_confirma_backend_y_base_datos(
     assert respuesta.status_code == 200
     assert respuesta.json() == {
         "aplicacion": "Hermes",
-        "version": "0.14.0",
+        "version": __version__,
         "estado": "saludable",
         "base_datos": {"estado": "disponible", "tiempo_respuesta_ms": 1.25},
     }

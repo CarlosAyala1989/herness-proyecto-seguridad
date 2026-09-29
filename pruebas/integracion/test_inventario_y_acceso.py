@@ -21,6 +21,7 @@ from aplicacion.modelos.registro_auditoria import RegistroAuditoria
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.principal import crear_aplicacion
 from aplicacion.seguridad.contrasenas import generar_hash_contrasena
+from aplicacion.seguridad.limite_autenticacion import LimitadorIntentosAutenticacion
 
 
 class TransporteRemotoSimulado:
@@ -312,6 +313,37 @@ def _datos_servidor(prefijo: str, numero: int) -> dict[str, object]:
         "huella_clave_host": f"SHA256:huellaDePruebaSegura{numero:02d}",
         "activo": True,
     }
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_limita_rechazos_antes_de_verificar_y_auditar(
+    contexto_integracion: ContextoIntegracion,
+) -> None:
+    contexto_integracion.aplicacion.state.limitador_autenticacion = (
+        LimitadorIntentosAutenticacion(2, 60)
+    )
+    transporte = httpx.ASGITransport(app=contexto_integracion.aplicacion)
+    async with httpx.AsyncClient(transport=transporte, base_url="http://pruebas") as cliente:
+        for _ in range(2):
+            respuesta = await cliente.get("/api/v1/servidores", auth=("desconocido", "incorrecta"))
+            assert respuesta.status_code == 401
+        bloqueada = await cliente.get(
+            "/api/v1/servidores", auth=("desconocido", "incorrecta")
+        )
+        assert bloqueada.status_code == 429
+        assert bloqueada.json()["codigo"] == "demasiados_intentos_autenticacion"
+        assert bloqueada.headers["Retry-After"] == "60"
+
+    async with contexto_integracion.fabrica_sesiones() as sesion:
+        cantidad = await sesion.scalar(
+            select(func.count(RegistroAuditoria.id_registro_auditoria)).where(
+                RegistroAuditoria.id_registro_auditoria
+                > contexto_integracion.primer_registro_auditoria,
+                RegistroAuditoria.accion == "autenticar_usuario",
+            )
+        )
+    assert cantidad == 2
 
 
 @pytest.mark.integracion

@@ -148,6 +148,9 @@ identidad Telegram o Slack activa del creador. El usuario y la identidad se
 vuelven a validar al enviar. Un canal deshabilitado conserva la entrega
 pendiente; un fallo se reintenta hasta el máximo configurado sin guardar la
 respuesta del proveedor ni ningún token.
+El resultado de cada intento se persiste y una entrega `enviada` deja de
+seleccionarse en ciclos posteriores. Una interrupción justo después de enviar
+y antes de persistir el acuse todavía puede ocasionar una repetición.
 
 La notificación contiene el nombre, la acción, el estado y los recuentos de
 servidores completados y fallidos. El detalle completo permanece en la API para

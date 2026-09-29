@@ -34,6 +34,7 @@ from aplicacion.interfaces.transporte_remoto import (
     InformacionArchivoRemoto,
     ResultadoEjecucionRemota,
 )
+from aplicacion.modelos.enumeraciones import SistemaOperativo
 from aplicacion.modelos.servidor import Servidor
 from aplicacion.seguridad.rutas_remotas import ruta_esta_contenida
 
@@ -74,6 +75,7 @@ class TransporteSSHAsync:
             configuracion.directorio_credenciales_ssh
         )
         self._conexion: asyncssh.SSHClientConnection | None = None
+        self._uid_remoto_sftp: int | None = None
 
     async def __aenter__(self) -> "TransporteSSHAsync":
         await self._conectar()
@@ -349,6 +351,7 @@ class TransporteSSHAsync:
         ruta_canonica = str(await cliente.realpath(ruta_remota))
         raices_canonicas = await self._resolver_raices_canonicas(cliente, rutas_permitidas)
         self._exigir_contencion_canonica(ruta_canonica, raices_canonicas)
+        await self._verificar_directorios_linux_seguros(cliente, posixpath.dirname(ruta_canonica))
         return ruta_canonica
 
     async def _resolver_destino_autorizado(
@@ -364,6 +367,7 @@ class TransporteSSHAsync:
         destino_canonico = posixpath.join(padre_canonico.rstrip("/"), nombre)
         raices_canonicas = await self._resolver_raices_canonicas(cliente, rutas_permitidas)
         self._exigir_contencion_canonica(destino_canonico, raices_canonicas)
+        await self._verificar_directorios_linux_seguros(cliente, padre_canonico)
         return destino_canonico
 
     async def _resolver_raices_canonicas(
@@ -379,10 +383,52 @@ class TransporteSSHAsync:
             atributos = await cliente.stat(canonica)
             if atributos.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
                 continue
+            await self._verificar_directorios_linux_seguros(cliente, canonica)
             raices.append(canonica)
         if not raices:
             raise ErrorRutaRemotaNoPermitida()
         return tuple(raices)
+
+    async def _obtener_uid_remoto_sftp(self) -> int:
+        """Identifica la cuenta SSH Linux sin aceptar un valor de usuario como orden."""
+
+        if self._uid_remoto_sftp is None:
+            resultado = await self.ejecutar_comando_controlado(
+                "id -u", self._configuracion.tiempo_operacion_ssh_segundos, 1_024
+            )
+            valor = resultado.salida.strip()
+            if resultado.codigo_salida != 0 or not valor.isascii() or not valor.isdigit():
+                raise ErrorRutaRemotaNoPermitida()
+            self._uid_remoto_sftp = int(valor)
+        return self._uid_remoto_sftp
+
+    async def _verificar_directorios_linux_seguros(
+        self, cliente: asyncssh.SFTPClient, ruta_directorio: str
+    ) -> None:
+        """Exige que ningún tercero pueda renombrar componentes del camino Linux."""
+
+        if self._servidor.sistema_operativo is not SistemaOperativo.LINUX:
+            return
+        uid_ssh = await self._obtener_uid_remoto_sftp()
+        if not ruta_directorio.startswith("/"):
+            raise ErrorRutaRemotaNoPermitida()
+        actual = "/"
+        componentes = ["/"]
+        for parte in ruta_directorio.strip("/").split("/"):
+            if parte:
+                actual = posixpath.join(actual, parte)
+                componentes.append(actual)
+        for componente in componentes:
+            atributos = await cliente.lstat(componente)
+            permisos = atributos.permissions
+            if (
+                atributos.type != asyncssh.FILEXFER_TYPE_DIRECTORY
+                or atributos.uid not in (0, uid_ssh)
+                or permisos is None
+            ):
+                raise ErrorRutaRemotaNoPermitida()
+            if permisos & 0o022 and not (permisos & stat.S_ISVTX):
+                raise ErrorRutaRemotaNoPermitida()
 
     def _exigir_contencion_canonica(
         self,

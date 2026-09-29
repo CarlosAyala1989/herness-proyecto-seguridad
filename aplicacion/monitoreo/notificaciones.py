@@ -72,6 +72,7 @@ class NotificadorSlack:
 
     def __init__(self, token: str) -> None:
         self._cliente = AsyncWebClient(token=token)
+        self._equipo_verificado: str | None = None
 
     async def enviar_mensaje(self, identificador_destino: str, mensaje: str) -> None:
         equipo, separador, usuario = identificador_destino.partition(":")
@@ -84,6 +85,18 @@ class NotificadorSlack:
             es_valido = False
         if not es_valido:
             raise ValueError("El destino de Slack no tiene un formato válido.")
+        if self._equipo_verificado is None:
+            respuesta = await self._cliente.auth_test()
+            equipo_token = respuesta.get("team_id")
+            if not isinstance(equipo_token, str):
+                raise ValueError("No se pudo verificar el espacio de trabajo de Slack.")
+            try:
+                construir_identificador_slack(equipo_token, usuario)
+            except ErrorHermes:
+                raise ValueError("El espacio de trabajo del token de Slack no es válido.") from None
+            self._equipo_verificado = equipo_token
+        if equipo != self._equipo_verificado:
+            raise ValueError("El destino pertenece a otro espacio de trabajo de Slack.")
         await self._cliente.chat_postMessage(channel=usuario, text=mensaje[:35_000])
 
     async def cerrar(self) -> None:
@@ -261,7 +274,10 @@ async def _registrar_resultado_envio(
 ) -> None:
     async with fabrica_sesiones() as sesion:
         notificacion = await sesion.get(NotificacionAlerta, id_notificacion)
-        if notificacion is None or notificacion.estado is EstadoNotificacionAlerta.ENVIADA:
+        if notificacion is None or notificacion.estado not in (
+            EstadoNotificacionAlerta.PENDIENTE,
+            EstadoNotificacionAlerta.FALLIDA,
+        ):
             return
         ahora = datetime.now(UTC).replace(tzinfo=None)
         notificacion.intentos += 1

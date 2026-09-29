@@ -28,6 +28,8 @@ class Configuracion(BaseSettings):
     host_api: str = "127.0.0.1"
     puerto_api: int = Field(default=8000, ge=1, le=65535)
     nivel_log: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    max_intentos_autenticacion: int = Field(default=10, ge=2, le=100)
+    ventana_autenticacion_segundos: int = Field(default=60, ge=10, le=3_600)
 
     host_base_datos: str = "127.0.0.1"
     puerto_base_datos: int = Field(default=3378, ge=1, le=65535)

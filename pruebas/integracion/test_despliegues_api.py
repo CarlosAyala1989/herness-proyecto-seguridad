@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
+from aplicacion.conexiones.errores import ErrorServidorSSHNoDisponible
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import ErrorConflictoDatos, ErrorRecursoNoEncontrado
 from aplicacion.esquemas.despliegues import SolicitudDespliegue
@@ -37,6 +38,7 @@ class TransporteDespliegueSimulado:
 
     archivos: dict[str, bytes] = {}
     fallar_proximo_reinicio = False
+    ruta_carga_parcial: str | None = None
     reinicios = 0
 
     def __init__(self, servidor: Servidor) -> None:
@@ -107,6 +109,10 @@ class TransporteDespliegueSimulado:
         existia = ruta_remota in self.archivos
         if existia and not sobrescribir:
             raise ErrorConflictoDatos("El archivo remoto ya existe.")
+        if ruta_remota == type(self).ruta_carga_parcial:
+            type(self).ruta_carga_parcial = None
+            self.archivos[ruta_remota] = contenido[:3]
+            raise ErrorServidorSSHNoDisponible()
         self.archivos[ruta_remota] = contenido
         return existia
 
@@ -178,6 +184,7 @@ async def contexto_despliegues() -> AsyncIterator[
     aplicacion.state.fabrica_transporte_remoto = TransporteDespliegueSimulado
     TransporteDespliegueSimulado.archivos = {}
     TransporteDespliegueSimulado.fallar_proximo_reinicio = False
+    TransporteDespliegueSimulado.ruta_carga_parcial = None
     TransporteDespliegueSimulado.reinicios = 0
     try:
         yield (
@@ -334,6 +341,16 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         assert estado.json()["estado"] == "operativa"
         assert estado.json()["integridad_verificada"] is True
 
+        TransporteDespliegueSimulado.archivos[destino] = b"alteracion externa"
+        version_alterada = await cliente.post(
+            f"{raiz_despliegue}/despliegues",
+            auth=credencial_admin,
+            json={"version": "2.0.0", "ruta_artefacto": artefacto_v2, "confirmar": True},
+        )
+        assert version_alterada.status_code == 502
+        assert TransporteDespliegueSimulado.archivos[destino] == b"alteracion externa"
+        TransporteDespliegueSimulado.archivos[destino] = b"version uno"
+
         version_dos = await cliente.post(
             f"{raiz_despliegue}/despliegues",
             auth=credencial_admin,
@@ -355,6 +372,24 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         assert TransporteDespliegueSimulado.archivos[destino] == b"version dos"
         TransporteDespliegueSimulado.archivos[ruta_respaldo] = b"version uno"
 
+        TransporteDespliegueSimulado.ruta_carga_parcial = destino
+        reversion_parcial = await cliente.post(
+            f"{raiz_despliegue}/despliegues/{id_version_dos}/revertir",
+            auth=credencial_admin,
+            json={"confirmar": True},
+        )
+        assert reversion_parcial.status_code == 503
+        assert TransporteDespliegueSimulado.archivos[destino] == b"version dos"
+
+        TransporteDespliegueSimulado.fallar_proximo_reinicio = True
+        reversion_sin_servicio = await cliente.post(
+            f"{raiz_despliegue}/despliegues/{id_version_dos}/revertir",
+            auth=credencial_admin,
+            json={"confirmar": True},
+        )
+        assert reversion_sin_servicio.status_code == 502
+        assert TransporteDespliegueSimulado.archivos[destino] == b"version dos"
+
         reversion = await cliente.post(
             f"{raiz_despliegue}/despliegues/{id_version_dos}/revertir",
             auth=credencial_admin,
@@ -362,6 +397,15 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         )
         assert reversion.status_code == 200
         assert reversion.json()["estado"] == "revertido"
+        assert TransporteDespliegueSimulado.archivos[destino] == b"version uno"
+
+        TransporteDespliegueSimulado.ruta_carga_parcial = destino
+        instalacion_parcial = await cliente.post(
+            f"{raiz_despliegue}/despliegues",
+            auth=credencial_admin,
+            json={"version": "3.0.0", "ruta_artefacto": artefacto_fallido, "confirmar": True},
+        )
+        assert instalacion_parcial.status_code == 503
         assert TransporteDespliegueSimulado.archivos[destino] == b"version uno"
 
         TransporteDespliegueSimulado.fallar_proximo_reinicio = True
@@ -381,7 +425,7 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         historial = await cliente.get(f"{raiz_despliegue}/despliegues", auth=credencial_auditor)
         assert historial.status_code == 200
         estados = [item["estado"] for item in historial.json()]
-        assert estados == ["fallido", "revertido", "completado"]
+        assert estados == ["fallido", "fallido", "revertido", "fallido", "completado"]
 
     gestor_telegram = GestorTelegram(
         aplicacion.state.fabrica_sesiones,
@@ -426,7 +470,7 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
     acciones = [registro.accion for registro in registros]
     assert "crear_plantilla_despliegue" in acciones
     assert "crear_aplicacion_administrada" in acciones
-    assert acciones.count("desplegar_aplicacion") == 4
+    assert acciones.count("desplegar_aplicacion") == 6
     assert "revertir_despliegue" in acciones
     assert any(
         registro.accion == "desplegar_aplicacion" and registro.canal is CanalAuditoria.TELEGRAM

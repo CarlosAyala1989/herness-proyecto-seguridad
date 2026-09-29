@@ -24,6 +24,7 @@ from aplicacion.rutas.inventario import enrutador as enrutador_inventario
 from aplicacion.rutas.monitoreo import enrutador as enrutador_monitoreo
 from aplicacion.rutas.salud import enrutador as enrutador_salud
 from aplicacion.rutas.tareas import enrutador as enrutador_tareas
+from aplicacion.seguridad.limite_autenticacion import LimitadorIntentosAutenticacion
 
 registrador = logging.getLogger(__name__)
 
@@ -62,6 +63,10 @@ def crear_aplicacion(
     aplicacion.state.configuracion = configuracion
     aplicacion.state.motor_base_datos = motor_base_datos
     aplicacion.state.fabrica_sesiones = crear_fabrica_sesiones(motor_base_datos)
+    aplicacion.state.limitador_autenticacion = LimitadorIntentosAutenticacion(
+        configuracion.max_intentos_autenticacion,
+        configuracion.ventana_autenticacion_segundos,
+    )
     aplicacion.state.fabrica_transporte_remoto = lambda servidor: crear_transporte_ssh(
         servidor, configuracion
     )

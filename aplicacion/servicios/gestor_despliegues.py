@@ -268,6 +268,30 @@ async def validar_preparacion_reversion(
     return despliegue
 
 
+async def _hash_version_vigente(
+    sesion: AsyncSession,
+    aplicacion: AplicacionAdministrada,
+) -> str | None:
+    """Recupera la huella confiable de la versión que declara el inventario."""
+
+    if aplicacion.version_actual is None:
+        return None
+    despliegue = await sesion.scalar(
+        select(DespliegueAplicacion)
+        .where(
+            DespliegueAplicacion.id_aplicacion_administrada
+            == aplicacion.id_aplicacion_administrada,
+            DespliegueAplicacion.version == aplicacion.version_actual,
+            DespliegueAplicacion.estado == EstadoDespliegue.COMPLETADO,
+        )
+        .order_by(DespliegueAplicacion.id_despliegue_aplicacion.desc())
+        .limit(1)
+    )
+    if despliegue is None or despliegue.hash_sha256 is None:
+        raise ErrorAplicacionNoOperativa()
+    return despliegue.hash_sha256
+
+
 async def _ejecutar_servicio(
     transporte: TransporteRemoto,
     servidor: Servidor,
@@ -373,6 +397,8 @@ async def desplegar_aplicacion(
     if ruta_artefacto == ruta_destino:
         raise ErrorConflictoDatos("El artefacto y el destino deben ser archivos diferentes.")
 
+    hash_anterior_esperado = await _hash_version_vigente(sesion, aplicacion)
+
     despliegue = DespliegueAplicacion(
         id_aplicacion_administrada=aplicacion.id_aplicacion_administrada,
         id_usuario=usuario.id_usuario,
@@ -407,6 +433,11 @@ async def desplegar_aplicacion(
             )
         except ErrorRecursoNoEncontrado:
             contenido_anterior = None
+        if hash_anterior_esperado is not None and (
+            contenido_anterior is None
+            or sha256(contenido_anterior).hexdigest() != hash_anterior_esperado
+        ):
+            raise ErrorAplicacionNoOperativa()
         if contenido_anterior is not None:
             await transporte.cargar_archivo(
                 ruta_respaldo,
@@ -418,6 +449,7 @@ async def desplegar_aplicacion(
             )
             despliegue.ruta_respaldo = ruta_respaldo
             despliegue.hash_respaldo_sha256 = sha256(contenido_anterior).hexdigest()
+        destino_modificado = True
         await transporte.cargar_archivo(
             ruta_destino,
             artefacto,
@@ -426,7 +458,6 @@ async def desplegar_aplicacion(
             configuracion.tamano_bloque_transferencia_bytes,
             True,
         )
-        destino_modificado = True
         await _verificar_instalacion(
             transporte,
             servidor,
@@ -442,11 +473,14 @@ async def desplegar_aplicacion(
         if destino_modificado:
             try:
                 if contenido_anterior is None:
-                    await transporte.eliminar_archivo(
-                        ruta_destino,
-                        rutas_destino,
-                        configuracion.tiempo_operacion_ssh_segundos,
-                    )
+                    try:
+                        await transporte.eliminar_archivo(
+                            ruta_destino,
+                            rutas_destino,
+                            configuracion.tiempo_operacion_ssh_segundos,
+                        )
+                    except ErrorRecursoNoEncontrado:
+                        pass
                 else:
                     await transporte.cargar_archivo(
                         ruta_destino,
@@ -456,14 +490,16 @@ async def desplegar_aplicacion(
                         configuracion.tamano_bloque_transferencia_bytes,
                         True,
                     )
-                    if plantilla.nombre_servicio:
-                        await _ejecutar_servicio(
-                            transporte,
-                            servidor,
-                            plantilla.nombre_servicio,
-                            CodigoAccion.REINICIAR_SERVICIO,
-                            configuracion,
-                        )
+                    await _verificar_instalacion(
+                        transporte,
+                        servidor,
+                        ruta_destino,
+                        rutas_lectura_destino,
+                        sha256(contenido_anterior).hexdigest(),
+                        plantilla.nombre_servicio,
+                        configuracion,
+                        reiniciar_servicio=True,
+                    )
                 restaurado = True
             except ErrorHermes:
                 restaurado = False
@@ -531,8 +567,22 @@ async def revertir_despliegue(
     )
     _, rutas_lectura = resolver_rutas_habilitadas(servidor, plantilla.ruta_destino, escritura=False)
     transporte = fabrica_transporte(servidor)
+    destino_modificado = False
+    contenido_vigente: bytes | None = None
     try:
+        _, contenido_vigente = await transporte.descargar_archivo(
+            ruta_destino,
+            rutas_lectura,
+            configuracion.tiempo_operacion_ssh_segundos,
+            configuracion.limite_archivo_transferencia_bytes,
+            configuracion.tamano_bloque_transferencia_bytes,
+        )
+        if despliegue.hash_sha256 is None or (
+            sha256(contenido_vigente).hexdigest() != despliegue.hash_sha256
+        ):
+            raise ErrorAplicacionNoOperativa()
         if despliegue.ruta_respaldo is None:
+            destino_modificado = True
             await transporte.eliminar_archivo(
                 ruta_destino, rutas_escritura, configuracion.tiempo_operacion_ssh_segundos
             )
@@ -549,6 +599,7 @@ async def revertir_despliegue(
                 or sha256(respaldo).hexdigest() != despliegue.hash_respaldo_sha256
             ):
                 raise ErrorAplicacionNoOperativa()
+            destino_modificado = True
             await transporte.cargar_archivo(
                 ruta_destino,
                 respaldo,
@@ -557,24 +608,49 @@ async def revertir_despliegue(
                 configuracion.tamano_bloque_transferencia_bytes,
                 True,
             )
-            if plantilla.nombre_servicio:
-                datos_servicio = await _ejecutar_servicio(
+            await _verificar_instalacion(
+                transporte,
+                servidor,
+                ruta_destino,
+                rutas_lectura,
+                despliegue.hash_respaldo_sha256,
+                plantilla.nombre_servicio,
+                configuracion,
+                reiniciar_servicio=True,
+            )
+    except ErrorHermes as error:
+        restaurado = not destino_modificado
+        if destino_modificado and contenido_vigente is not None:
+            try:
+                await transporte.cargar_archivo(
+                    ruta_destino,
+                    contenido_vigente,
+                    rutas_escritura,
+                    configuracion.tiempo_operacion_ssh_segundos,
+                    configuracion.tamano_bloque_transferencia_bytes,
+                    True,
+                )
+                await _verificar_instalacion(
                     transporte,
                     servidor,
+                    ruta_destino,
+                    rutas_lectura,
+                    sha256(contenido_vigente).hexdigest(),
                     plantilla.nombre_servicio,
-                    CodigoAccion.REINICIAR_SERVICIO,
                     configuracion,
+                    reiniciar_servicio=True,
                 )
-                if datos_servicio.get("estado") != "activo":
-                    raise ErrorAplicacionNoOperativa()
-    except ErrorHermes as error:
+                restaurado = True
+            except ErrorHermes:
+                restaurado = False
         _auditar(
             sesion,
             usuario,
             aplicacion,
             "revertir_despliegue",
             ResultadoAuditoria.ERROR,
-            f"Reversión fallida con código {error.codigo}.",
+            f"Reversión fallida con código {error.codigo}; "
+            + ("versión vigente conservada." if restaurado else "estado vigente no confirmado."),
             solicitud,
             contexto,
         )

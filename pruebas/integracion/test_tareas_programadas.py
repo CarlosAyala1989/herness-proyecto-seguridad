@@ -283,6 +283,13 @@ async def test_programa_ejecuta_una_sola_vez_notifica_y_cancela(
         )
         assert resumen_entregas.enviadas == 1
         assert "Estado: completada" in notificador.mensajes[0][1]
+        repeticion_entregas = await enviar_notificaciones_tareas_pendientes(
+            contexto_tareas.fabrica_sesiones,
+            {TipoCanalMensajeria.TELEGRAM: notificador},
+            3,
+        )
+        assert repeticion_entregas.enviadas == 0
+        assert len(notificador.mensajes) == 1
 
         historial = await cliente.get(
             f"/api/v1/tareas/{id_tarea}/ejecuciones", auth=autenticacion_auditor

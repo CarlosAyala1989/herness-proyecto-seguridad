@@ -417,6 +417,15 @@ async def test_ciclo_deduplica_reintenta_recupera_y_aisla_servidores(
     assert segundo.notificaciones_enviadas == 3
     assert len(notificador.mensajes) == 3
 
+    sin_cambios = await ejecutar_ciclo_monitoreo(
+        contexto_monitoreo.fabrica_sesiones,
+        TransporteMonitoreoSimulado,
+        contexto_monitoreo.configuracion,
+        notificadores,
+    )
+    assert sin_cambios.notificaciones_enviadas == 0
+    assert len(notificador.mensajes) == 3
+
     TransporteMonitoreoSimulado.modo = "recuperacion"
     tercero = await ejecutar_ciclo_monitoreo(
         contexto_monitoreo.fabrica_sesiones,

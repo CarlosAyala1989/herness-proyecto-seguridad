@@ -91,7 +91,10 @@ async def _registrar_resultado(
 ) -> None:
     async with fabrica_sesiones() as sesion:
         notificacion = await sesion.get(NotificacionTarea, id_notificacion)
-        if notificacion is None or notificacion.estado is EstadoNotificacionTarea.ENVIADA:
+        if notificacion is None or notificacion.estado not in (
+            EstadoNotificacionTarea.PENDIENTE,
+            EstadoNotificacionTarea.FALLIDA,
+        ):
             return
         ahora = datetime.now(UTC).replace(tzinfo=None)
         notificacion.intentos += 1

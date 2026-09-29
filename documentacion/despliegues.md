@@ -207,6 +207,15 @@ persistente. El registro de auditoría identifica `api`, `telegram` o `slack`.
   las funciones SFTP del hito 13.
 - Los respaldos quedan en la raíz autorizada con un sufijo interno. Su política
   de retención deberá definirse antes de producción.
+- Si la versión vigente tenía una huella registrada, Hermes exige que el
+  contenido remoto coincida antes de respaldarlo; un cambio externo se
+  rechaza. Los errores de escritura parcial detectados disparan restauración
+  y verificación de contenido y servicio. La reversión manual también intenta
+  conservar la versión vigente cuando falla.
+- Una caída brusca del proceso durante la escritura SFTP directa puede dejar
+  un archivo parcial. Verifica el destino y utiliza el respaldo antes de un
+  nuevo intento. Una instalación atómica con recuperación tras reinicio queda
+  fuera de la estrategia actual de archivo único.
 - No se admite una segunda instalación concurrente de la misma aplicación; la
   fila se bloquea durante la operación remota acotada.
 - La demostración automatizada usa un servidor AsyncSSH Linux efímero y un

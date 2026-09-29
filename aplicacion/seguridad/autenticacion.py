@@ -29,6 +29,9 @@ async def obtener_usuario_actual(
 ) -> Usuario:
     """Autentica al usuario sin distinguir entre nombre y contraseña incorrectos."""
 
+    origen = solicitud.client.host if solicitud.client is not None else "origen_desconocido"
+    limitador = solicitud.app.state.limitador_autenticacion
+    limitador.comprobar(origen)
     usuario = None
     if credenciales is not None:
         consulta = (
@@ -46,8 +49,10 @@ async def obtener_usuario_actual(
         credenciales.password,
         usuario.hash_contrasena,
     ):
+        limitador.registrar_exito(origen)
         return usuario
 
+    limitador.registrar_fallo(origen)
     preparar_registro_auditoria(
         sesion,
         usuario=usuario,

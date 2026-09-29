@@ -155,6 +155,10 @@ documentan en `motor_acciones.md` y su uso desde Telegram en `telegram.md`.
 
 - Una solicitud sin credenciales obtiene `401`; una cuenta sin permiso obtiene
   `403` y no alcanza el caso de uso protegido.
+- Tras los rechazos configurados desde un mismo origen, HTTP Basic responde
+  `429` durante la ventana establecida sin repetir el cálculo Argon2. Se
+  configura con `HERMES_MAX_INTENTOS_AUTENTICACION` y
+  `HERMES_VENTANA_AUTENTICACION_SEGUNDOS`.
 - Las contraseñas locales se validan contra hashes Argon2 y nunca forman parte
   de un esquema de respuesta.
 - Nombres, direcciones, puertos, usuarios y referencias se validan antes de
@@ -166,7 +170,7 @@ documentan en `motor_acciones.md` y su uso desde Telegram en `telegram.md`.
   activo y el permiso de la acción. El nombre visible y el número telefónico no
   participan en la autenticación.
 - La auditoría distingue los canales `api`, `sistema`, `telegram` y `slack`.
-  Telegram ya está implementado; Slack permanece reservado para el hito 9.
+  Telegram y Slack usan el mismo modelo de permisos y auditoría.
 
 La autenticación HTTP Basic es exclusivamente una adaptación del laboratorio
 local. El backend debe permanecer en `127.0.0.1`; no se debe exponer esta API a

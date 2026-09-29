@@ -424,5 +424,6 @@ Windows Server real deben prepararse OpenSSH, las claves, `known_hosts`, raíces
 SFTP y permisos mínimos descritos en `despliegues.md`; no se afirma esa prueba
 sin las credenciales del laboratorio.
 
-El endurecimiento integral, la revisión final de seguridad y la preparación de
-evidencias completas corresponden al hito 15.
+El estado contrastado de los hitos 1 a 14, sus pruebas y las comprobaciones
+externas pendientes se detallan en `auditoria_hitos_1_14.md`. El endurecimiento
+integral y las evidencias completas corresponden al hito 15.

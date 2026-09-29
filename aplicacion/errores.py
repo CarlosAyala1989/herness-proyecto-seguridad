@@ -55,6 +55,18 @@ class ErrorNoAutenticado(ErrorHermes):
         )
 
 
+class ErrorDemasiadosIntentosAutenticacion(ErrorHermes):
+    """Frena rechazos repetidos antes de cargar Argon2 y MariaDB."""
+
+    def __init__(self, espera_segundos: int) -> None:
+        super().__init__(
+            "Hay demasiados intentos de acceso. Inténtelo más tarde.",
+            codigo="demasiados_intentos_autenticacion",
+            estado_http=HTTPStatus.TOO_MANY_REQUESTS,
+            cabeceras={"Retry-After": str(espera_segundos)},
+        )
+
+
 class ErrorIdentidadMensajeriaNoAutorizada(ErrorHermes):
     """Rechaza identidades externas que no estén vinculadas y activas."""
 

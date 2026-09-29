@@ -265,8 +265,7 @@ Referencias oficiales:
 ## Estado de la comprobación externa
 
 La interfaz, autorización, persistencia, permisos, auditoría y acciones se
-prueban automáticamente con actualizaciones y transportes simulados. En este
-entorno todavía no existe un token real, un usuario persistente ni un servidor
-persistente, por lo que no se afirma una conversación real con Telegram. La
-prueba externa queda lista para ejecutarse siguiendo esta guía cuando el usuario
-aporte su token y cree sus credenciales locales.
+prueban automáticamente con actualizaciones y transportes simulados. Como aún
+no se dispone de un token real de laboratorio, no se afirma una conversación
+real con Telegram. La prueba externa queda lista para ejecutarse siguiendo
+esta guía cuando el usuario aporte el token y vincule su identidad.

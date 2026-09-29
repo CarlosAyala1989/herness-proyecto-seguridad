@@ -70,6 +70,9 @@ async def _atender_proceso(proceso: asyncssh.SSHServerProcess[bytes]) -> None:
     elif proceso.command == "esperar_en_prueba":
         await asyncio.sleep(2)
         proceso.exit(0)
+    elif proceso.command == "id -u":
+        proceso.stdout.write(f"{os.getuid()}\n".encode("ascii"))
+        proceso.exit(0)
     else:
         proceso.stderr.write(b"operacion de prueba no reconocida")
         proceso.exit(127)
@@ -86,6 +89,8 @@ async def _crear_laboratorio_ssh(tmp_path: Path) -> AsyncIterator[LaboratorioSSH
     ruta_hosts = tmp_path / "hosts_conocidos"
     raiz_sftp = tmp_path / "raiz_sftp"
     (raiz_sftp / "intercambio").mkdir(parents=True)
+    raiz_sftp.chmod(0o700)
+    (raiz_sftp / "intercambio").chmod(0o700)
     (raiz_sftp / "fuera").mkdir()
     (raiz_sftp / "fuera" / "secreto.txt").write_text("secreto", encoding="utf-8")
     (raiz_sftp / "intercambio" / "enlace_fuera").symlink_to("../fuera/secreto.txt")
@@ -256,14 +261,18 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
             _crear_servidor(laboratorio),
             _crear_configuracion(configuracion_pruebas, laboratorio),
         )
-        reemplazado = await transporte.cargar_archivo(
-            "/intercambio/prueba.txt",
-            b"contenido seguro de prueba",
-            ("/intercambio",),
-            2,
-            4_096,
-            False,
-        )
+        try:
+            reemplazado = await transporte.cargar_archivo(
+                "/intercambio/prueba.txt",
+                b"contenido seguro de prueba",
+                ("/intercambio",),
+                2,
+                4_096,
+                False,
+            )
+        except Exception:
+            await transporte.cerrar()
+            raise
         informacion = await transporte.consultar_informacion_archivo(
             "/intercambio/prueba.txt", ("/intercambio",), 2
         )
@@ -300,6 +309,12 @@ async def test_transfiere_archivo_sftp_con_ruta_y_tamano_controlados(
             await transporte.consultar_informacion_archivo(
                 "/intercambio/enlace_fuera", ("/intercambio",), 2
             )
+        (laboratorio.raiz_sftp / "intercambio").chmod(0o777)
+        with pytest.raises(ErrorRutaRemotaNoPermitida):
+            await transporte.consultar_informacion_archivo(
+                "/intercambio/prueba.txt", ("/intercambio",), 2
+            )
+        (laboratorio.raiz_sftp / "intercambio").chmod(0o700)
         await transporte.eliminar_archivo("/intercambio/prueba.txt", ("/intercambio",), 2)
         with pytest.raises(ErrorRecursoNoEncontrado):
             await transporte.consultar_informacion_archivo(

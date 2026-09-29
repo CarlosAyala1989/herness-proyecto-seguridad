@@ -12,6 +12,9 @@ Desde el hito 10, el proceso de monitoreo puede entregar alertas y
 recuperaciones mediante `chat.postMessage`. La identidad debe continuar activa
 y tener una suscripción habilitada por un administrador. El envío automático
 no abre Socket Mode ni concede permisos administrativos adicionales.
+Antes de la primera notificación, Hermes consulta `auth.test` con el token de
+bot y exige que su `team_id` coincida con el equipo de la identidad vinculada.
+Un destino de otro espacio de trabajo se rechaza antes de enviar el mensaje.
 
 ## Controles de acceso
 
@@ -188,3 +191,8 @@ Utiliza únicamente la unidad de laboratorio descrita en `servicios.md`.
 - [Comandos de barra](https://docs.slack.dev/tools/bolt-python/concepts/commands/)
 - [Acciones y botones](https://docs.slack.dev/tools/bolt-python/concepts/actions/)
 - [Confirmación de solicitudes](https://docs.slack.dev/tools/bolt-python/concepts/acknowledge/)
+- [Comprobación de identidad del token](https://docs.slack.dev/reference/methods/auth.test/)
+
+La conversación y la entrega reales quedan pendientes de los tokens del
+laboratorio; la autorización y el rechazo entre espacios se prueban con
+clientes simulados.
