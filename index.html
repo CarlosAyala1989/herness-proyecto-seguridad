@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071014" />
+    <meta
+      name="description"
+      content="Hermes: administración centralizada de servidores Linux y Windows Server desde Telegram y Slack, con seguridad, auditoría y despliegue local."
+    />
+    <title>Hermes — Control total. Un solo núcleo.</title>
+    <link rel="icon" type="image/svg+xml" href="icono.svg" />
+    <link rel="stylesheet" href="estilos.css" />
+  </head>
+  <body>
+    <a class="salto" href="#contenido">Ir al contenido</a>
+    <div class="fondo" aria-hidden="true"></div>
+
+    <header class="cabecera envoltura">
+      <a class="marca" href="#inicio" aria-label="Hermes, ir al inicio">
+        <span class="marca-simbolo" aria-hidden="true">H<span>·</span></span>
+        <span>HERMES</span>
+      </a>
+      <nav class="navegacion" aria-label="Navegación principal">
+        <a href="#plataforma">Plataforma</a>
+        <a href="#arquitectura">Arquitectura</a>
+        <a href="#seguridad">Seguridad</a>
+        <a class="enlace-repositorio" href="https://github.com/CarlosAyala1989/herness-proyecto-seguridad">Ver código <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="contenido">
+      <section class="heroe envoltura" id="inicio" aria-labelledby="titulo-principal">
+        <div class="heroe-texto">
+          <p class="etiqueta"><span class="punto-vivo" aria-hidden="true"></span> PROYECTO DE ADMINISTRACIÓN REMOTA</p>
+          <h1 id="titulo-principal">Muchos servidores.<br /><em>Un solo centro de control.</em></h1>
+          <p class="heroe-descripcion">
+            Hermes conecta Telegram y Slack con un backend común para administrar
+            servidores Linux y Windows Server de forma controlada, auditable y
+            preparada para crecer.
+          </p>
+          <div class="acciones">
+            <a class="boton boton-primario" href="https://github.com/CarlosAyala1989/herness-proyecto-seguridad">Explorar el proyecto <span aria-hidden="true">↗</span></a>
+            <a class="boton boton-secundario" href="#arquitectura">Cómo funciona <span aria-hidden="true">↓</span></a>
+          </div>
+          <div class="indicadores" aria-label="Datos del proyecto">
+            <div><strong>14</strong><span>hitos implementados</span></div>
+            <div><strong>2</strong><span>canales, un backend</span></div>
+            <div><strong>∞</strong><span>servidores en inventario</span></div>
+          </div>
+        </div>
+
+        <div class="heroe-visual" aria-label="Representación conceptual del panel de Hermes">
+          <div class="halo halo-uno" aria-hidden="true"></div>
+          <div class="halo halo-dos" aria-hidden="true"></div>
+          <div class="panel">
+            <div class="panel-barra"><span class="panel-luces" aria-hidden="true"><i></i><i></i><i></i></span><span>hermes / centro de control</span><span class="panel-seguro">● CONEXIÓN SEGURA</span></div>
+            <div class="panel-cuerpo">
+              <div class="panel-superior"><span>INVENTARIO ACTIVO</span><span>● SISTEMA OPERATIVO MIXTO</span></div>
+              <div class="fila-servidor"><span class="icono-servidor" aria-hidden="true">⌘</span><span class="datos-servidor"><strong>linux-lab-01</strong><small>Linux · SSH verificado</small></span><span class="estado">DISPONIBLE</span></div>
+              <div class="fila-servidor"><span class="icono-servidor icono-windows" aria-hidden="true">▦</span><span class="datos-servidor"><strong>windows-lab-01</strong><small>Windows Server · Adaptador dedicado</small></span><span class="estado estado-pendiente">LISTO PARA VM</span></div>
+              <div class="panel-linea" aria-hidden="true"><span></span></div>
+              <div class="terminal"><span class="terminal-comando">$ hermes diagnostico</span><br /><span class="terminal-respuesta">→ solicitud validada<br />→ permiso comprobado<br />→ resultado auditado</span><span class="cursor" aria-hidden="true">▌</span></div>
+            </div>
+          </div>
+          <div class="tarjeta-flotante tarjeta-telegram"><span aria-hidden="true">↗</span> TELEGRAM</div>
+          <div class="tarjeta-flotante tarjeta-slack"><span aria-hidden="true">✳</span> SLACK</div>
+        </div>
+      </section>
+
+      <section class="franja" aria-label="Principios de Hermes">
+        <div class="envoltura franja-interior"><span>LOCAL PRIMERO</span><i aria-hidden="true">✦</i><span>LINUX + WINDOWS SERVER</span><i aria-hidden="true">✦</i><span>SSH VERIFICADO</span><i aria-hidden="true">✦</i><span>UNA SOLA AUDITORÍA</span></div>
+      </section>
+
+      <section class="seccion envoltura" id="plataforma" aria-labelledby="titulo-plataforma">
+        <div class="encabezado-seccion"><p class="etiqueta">01 / CAPACIDADES</p><h2 id="titulo-plataforma">Administración con alcance.<br /><em>Sin perder el control.</em></h2><p>Las interfaces reciben instrucciones; la lógica, los permisos y la ejecución viven en el mismo núcleo.</p></div>
+        <div class="cuadricula-capacidades">
+          <article class="capacidad"><span class="capacidad-numero">01</span><div class="capacidad-icono" aria-hidden="true">◫</div><h3>Inventario flexible</h3><p>Servidores y grupos persistentes, sin nombres fijos ni límite artificial de tres equipos.</p></article>
+          <article class="capacidad"><span class="capacidad-numero">02</span><div class="capacidad-icono" aria-hidden="true">⌘</div><h3>Operaciones remotas</h3><p>Diagnóstico, servicios, usuarios, archivos y despliegues mediante acciones permitidas.</p></article>
+          <article class="capacidad"><span class="capacidad-numero">03</span><div class="capacidad-icono" aria-hidden="true">⌁</div><h3>Varios servidores</h3><p>Selección individual, por grupo o global, con concurrencia acotada y fallos aislados.</p></article>
+          <article class="capacidad"><span class="capacidad-numero">04</span><div class="capacidad-icono" aria-hidden="true">◷</div><h3>Vigilancia continua</h3><p>Métricas, servicios críticos, alertas deduplicadas y tareas programadas con historial.</p></article>
+        </div>
+      </section>
+
+      <section class="seccion seccion-arquitectura" id="arquitectura" aria-labelledby="titulo-arquitectura">
+        <div class="envoltura">
+          <div class="encabezado-seccion"><p class="etiqueta">02 / ARQUITECTURA</p><h2 id="titulo-arquitectura">Una instrucción.<br /><em>Un flujo verificable.</em></h2></div>
+          <div class="flujo" aria-label="Telegram o Slack pasan por el backend Hermes y llegan a servidores Linux o Windows mediante SSH">
+            <div class="nodo nodo-canales"><span class="nodo-sobretitulo">ENTRADA</span><strong>Telegram <span>+</span> Slack</strong><small>Identidad vinculada</small></div>
+            <span class="conector" aria-hidden="true">→</span>
+            <div class="nodo nodo-central"><span class="nodo-sobretitulo">NÚCLEO</span><strong>Hermes Backend</strong><small>Permisos · Acciones · Auditoría</small></div>
+            <span class="conector" aria-hidden="true">→</span>
+            <div class="nodo nodo-destino"><span class="nodo-sobretitulo">DESTINO</span><strong>Linux <span>+</span> Windows</strong><small>SSH / SFTP verificado</small></div>
+          </div>
+          <p class="nota-arquitectura">MariaDB conserva inventario, usuarios, permisos, alertas, tareas y auditoría. Los canales nunca ejecutan comandos SSH por su cuenta.</p>
+        </div>
+      </section>
+
+      <section class="seccion envoltura" id="seguridad" aria-labelledby="titulo-seguridad">
+        <div class="bloque-seguridad">
+          <div><p class="etiqueta">03 / SEGURIDAD POR DISEÑO</p><h2 id="titulo-seguridad">Poder, con<br /><em>límites claros.</em></h2><p>Hermes prioriza operaciones predefinidas. Cada solicitud se autentica, se autoriza y deja rastro. Las acciones sensibles requieren confirmación.</p><a class="enlace-texto" href="https://github.com/CarlosAyala1989/herness-proyecto-seguridad/blob/main/documentacion/auditoria_hitos_1_14.md">Leer la auditoría <span aria-hidden="true">↗</span></a></div>
+          <ul class="lista-seguridad"><li><span>01</span> Identidades vinculadas y roles persistentes</li><li><span>02</span> Huella SSH y <code>known_hosts</code> obligatorios</li><li><span>03</span> Confirmaciones y parámetros validados</li><li><span>04</span> Límites de tiempo, salida y concurrencia</li><li><span>05</span> Auditoría por usuario, acción y servidor</li></ul>
+        </div>
+      </section>
+
+      <section class="seccion cierre" aria-labelledby="titulo-cierre">
+        <div class="envoltura cierre-interior"><p class="etiqueta">CONSTRUIDO PARA UN LABORATORIO REAL</p><h2 id="titulo-cierre">Del entorno local<br /><em>al siguiente servidor.</em></h2><p>El código y las pruebas locales están disponibles. La validación en vivo de Telegram, Slack y máquinas virtuales Windows/Linux queda pendiente de las credenciales y del laboratorio.</p><a class="boton boton-primario" href="https://github.com/CarlosAyala1989/herness-proyecto-seguridad">Abrir repositorio <span aria-hidden="true">↗</span></a></div>
+      </section>
+    </main>
+
+    <footer class="pie envoltura"><a class="marca" href="#inicio"><span class="marca-simbolo" aria-hidden="true">H<span>·</span></span><span>HERMES</span></a><p>Administración centralizada. Seguridad en cada paso.</p><a href="https://github.com/CarlosAyala1989/herness-proyecto-seguridad">Código en GitHub ↗</a></footer>
+  </body>
+</html>

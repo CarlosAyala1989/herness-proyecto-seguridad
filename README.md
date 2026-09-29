@@ -100,6 +100,26 @@ Las acciones disponibles son `obtener_identidad`, `consultar_proceso`,
 reutilizan esas acciones sobre un servidor, un grupo o todos los servidores
 activos.
 
+## Sitio público estático
+
+La portada de Hermes está en [`index.html`](index.html) y
+[`estilos.css`](estilos.css). No usa JavaScript, dependencias externas ni
+credenciales; `.nojekyll` evita un procesamiento innecesario. GitHub Pages puede
+servirla directamente desde la raíz de
+`main`. En el repositorio de GitHub, abre **Settings → Pages**, selecciona
+**Deploy from a branch**, rama **main** y carpeta **/(root)**, y guarda.
+Después de subir este commit, la dirección prevista será
+`https://carlosayala1989.github.io/herness-proyecto-seguridad/`.
+
+Para verla sin publicarla:
+
+```bash
+python3.12 -m http.server 8765 --bind 127.0.0.1
+```
+
+Abre `http://127.0.0.1:8765/`. La web describe el proyecto, pero no expone la
+API de administración ni pretende validar Telegram, Slack o VMs reales.
+
 ## Requisitos locales
 
 - Ubuntu 24.04 o un sistema compatible.
