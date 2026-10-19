@@ -172,7 +172,7 @@ while read -r servicio habilitado; do
         sudo systemctl is-active --quiet "hermes-${servicio}.service" || fallar "El servicio hermes-$servicio no está activo. Revisa sudo journalctl -u hermes-$servicio -n 50."
     fi
 done <<< "$HERMES_SERVICIOS"
-.venv/bin/python -m aplicacion.comandos.configurar_instalacion --vincular-telegram
+.venv/bin/python -m aplicacion.comandos.configurar_instalacion --vincular-canales
 printf '\nHermes instalado. API local: http://127.0.0.1:%s/documentacion\n' "$HERMES_PUERTO_API"
 printf 'Estado: sudo systemctl status hermes-api\nRegistros: sudo journalctl -u hermes-telegram -f\n'
 printf 'Conserva esta carpeta: los servicios se ejecutan desde ella.\n'

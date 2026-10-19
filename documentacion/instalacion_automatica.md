@@ -19,6 +19,33 @@ entrada a `/dev/tty` para solicitar las credenciales: no intenta leerlas desde
 la tubería que contiene su propio código. Mantén la carpeta de instalación en
 su ubicación definitiva: los servicios se ejecutarán desde ella.
 
+## Instancia propia de cada usuario
+
+Cada instalación usa el bot de Telegram y la aplicación de Slack creados por
+su propietario. El backend, MariaDB, las credenciales, el inventario y la
+auditoría permanecen en el servidor donde se ejecuta el instalador. Hermes no
+requiere un servidor central del desarrollador ni una cuenta en un servicio
+Hermes. El nombre, usuario y avatar del bot se configuran en BotFather; el
+nombre y la imagen de la aplicación Slack se configuran en su propia aplicación.
+
+Se necesitan tres tokens si se utilizan las dos plataformas: uno de Telegram
+y dos de Slack (`xoxb-` para el bot y `xapp-` con `connections:write` para Socket
+Mode), de la misma aplicación instalada en el espacio de trabajo del usuario.
+Usa el manifiesto incluido para crear el comando `/hermes`, sus permisos y la
+interactividad. Un API key genérico de Slack no sustituye estos dos tokens.
+
+El asistente solicita las credenciales y permite autorizar a su propietario
+en ambos canales durante la misma instalación. Los tokens identifican al bot;
+los identificadores de usuario determinan quién puede administrarlo. Por eso
+hay que completar también esa autorización, además de crear el administrador
+local. No se concede acceso automáticamente al primer desconocido que escriba.
+
+Telegram y Slack siguen siendo los proveedores de mensajería: los mensajes y
+respuestas pasan por sus servicios. Durante la instalación se descargan el
+código y las dependencias desde sus repositorios. «Autohospedado» significa que
+Hermes y su base de datos se ejecutan en el servidor del usuario; no significa
+que Telegram o Slack funcionen sin su propia infraestructura.
+
 Para distribuir este comando, publica tanto `instalar.sh` como
 `infraestructura/instalar_local.sh` y el resto de los cambios en la rama
 `main`. Una URL a un archivo todavía no publicado no instala el programa.
@@ -61,8 +88,13 @@ muestra el commit descargado.
 9. Instala servicios systemd, habilita el arranque automático y comprueba la
    salud de la API. Hermes se ejecuta como el usuario que inició el instalador;
    la unidad que inicia Docker Compose se ejecuta como root.
-10. Si Telegram está habilitado, ofrece vincular tu ID numérico a una cuenta
-    Hermes. Puedes abrir el bot y enviar `/inicio` en ese momento para obtenerlo.
+10. Autoriza al propietario de los canales habilitados desde el mismo asistente:
+    envía `/inicio` en privado a tu bot de Telegram y `/hermes ayuda` en un mensaje
+    directo a tu bot de Slack; sus respuestas iniciales muestran los IDs que
+    debes introducir. Si hay un solo administrador activo, se utiliza esa cuenta;
+    si hay varios, el asistente solicita elegirla. Al repetir la instalación,
+    Enter permite conservar los vínculos activos existentes. Si omites un vínculo
+    nuevo, se informa «autorización pendiente» y el bot seguirá denegando el acceso.
 
 El instalador no ejecuta `.env` como código ni imprime los tokens. No inicia
 Uvicorn en modo de recarga. La API queda en `127.0.0.1`, con el puerto definido
@@ -74,7 +106,7 @@ solo en `127.0.0.1`, con su puerto local configurado (3378 por defecto).
 | Integración | Datos necesarios |
 | --- | --- |
 | Telegram, opcional | Token del bot creado con `@BotFather` e ID numérico del usuario que se autorizará |
-| Slack, opcional | Tokens `xoxb-` y `xapp-` de una aplicación preparada para Socket Mode; después se vincula su identidad siguiendo `slack.md` |
+| Slack, opcional | Tokens `xoxb-` y `xapp-` de una aplicación preparada para Socket Mode e IDs de espacio de trabajo y usuario para autorizar al propietario desde el asistente |
 | Servidores administrados | Dirección, sistema operativo, usuario SSH, clave autorizada y huella de host verificada |
 
 Hermes no necesita una clave de OpenAI para estas funciones. El token de

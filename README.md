@@ -147,6 +147,11 @@ que la URL funcione.
 Si ya descargaste el repositorio, también puedes usar `bash instalar.sh` desde
 su carpeta: utiliza directamente esa copia, sin descargar otra.
 
+Cada usuario aporta su propio bot de Telegram y su aplicación Slack. Hermes y
+MariaDB se ejecutan en su servidor, sin un servidor central de Hermes. El
+asistente solicita los tokens y permite autorizar al propietario en ambos
+canales; Telegram y Slack continúan prestando el servicio de mensajería.
+
 Consulta [`documentacion/instalacion_automatica.md`](documentacion/instalacion_automatica.md)
 para los requisitos, credenciales, servicios y alcance de la verificación.
 

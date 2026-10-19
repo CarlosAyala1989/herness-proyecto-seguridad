@@ -77,6 +77,12 @@ o con un prefijo incompatible.
 
 ## Vincular un usuario
 
+Si usas `curl | bash`, el asistente de instalación también ofrece esta
+vinculación: después de iniciar los servicios, introduce el ID de equipo y de
+usuario mostrados por `/hermes ayuda` en un mensaje directo al bot. No necesitas
+ejecutar el comando manual siguiente. Al repetir la instalación, puedes conservar
+un vínculo activo o introducir otros identificadores explícitamente.
+
 Inicia primero Slack sin vinculación:
 
 ```bash

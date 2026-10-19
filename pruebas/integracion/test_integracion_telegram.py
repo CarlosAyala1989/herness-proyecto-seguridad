@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
+from aplicacion.comandos import configurar_instalacion as asistente_instalacion
 from aplicacion.configuracion import Configuracion
 from aplicacion.errores import (
     ErrorConflictoDatos,
@@ -520,3 +521,45 @@ async def test_rechaza_datos_de_vinculacion_fuera_de_limites(
                 contexto_telegram_integracion.identificador_autorizado,
                 "x" * 101,
             )
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_asistente_recupera_y_conserva_ambas_identidades_persistentes(
+    contexto_telegram_integracion: ContextoTelegramIntegracion,
+    monkeypatch,
+    capsys,
+) -> None:
+    configuracion = Configuracion().model_copy(  # type: ignore[call-arg]
+        update={"telegram_habilitado": True, "slack_habilitado": True}
+    )
+    monkeypatch.setattr(asistente_instalacion, "obtener_configuracion", lambda: configuracion)
+    nombre = f"{contexto_telegram_integracion.prefijo}-usuario"
+
+    def responder_asistente(pregunta: str) -> str:
+        if "Usuario administrador" in pregunta:
+            return nombre
+        assert "actual:" in pregunta
+        return ""
+
+    monkeypatch.setattr("builtins.input", responder_asistente)
+    await asistente_instalacion.ofrecer_vinculos()
+    salida = capsys.readouterr().out
+    assert "Telegram: usuario autorizado" in salida
+    assert "Slack: usuario autorizado" in salida
+    assert str(contexto_telegram_integracion.identificador_autorizado) not in salida
+    assert contexto_telegram_integracion.identidad_slack not in salida
+
+    # La autorización sigue funcionando en los mismos gestores tras cerrar el asistente.
+    assert (
+        await contexto_telegram_integracion.gestor.comprobar_acceso(
+            contexto_telegram_integracion.identificador_autorizado, 3001
+        )
+        == "Administrador Telegram"
+    )
+    assert (
+        await contexto_telegram_integracion.gestor_slack.comprobar_acceso(
+            contexto_telegram_integracion.identidad_slack, "asistente-conservado"
+        )
+        == "Administrador Telegram"
+    )

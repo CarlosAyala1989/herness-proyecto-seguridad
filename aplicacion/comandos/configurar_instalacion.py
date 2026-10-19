@@ -17,10 +17,13 @@ from sqlalchemy import select
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.comandos.crear_administrador import crear_administrador
+from aplicacion.comandos.vincular_usuario_slack import ejecutar as vincular_slack
 from aplicacion.comandos.vincular_usuario_telegram import ejecutar as vincular_telegram
 from aplicacion.configuracion import Configuracion, obtener_configuracion
 from aplicacion.errores import ErrorHermes
-from aplicacion.modelos.acceso import Usuario
+from aplicacion.modelos.acceso import Rol, Usuario
+from aplicacion.modelos.enumeraciones import TipoCanalMensajeria
+from aplicacion.servicios.gestor_identidades_mensajeria import construir_identificador_slack
 
 
 def preguntar(texto: str, predeterminado: bool = False) -> bool:
@@ -99,14 +102,21 @@ def configurar(ruta: Path = Path(".env"), ejemplo: Path = Path(".env.ejemplo")) 
     def habilitado(nombre: str) -> bool:
         return str(variables.get(nombre, "false")).lower() in {"true", "1", "yes", "on"}
 
+    print("Hermes y su base de datos se ejecutan en este servidor, con tus propias credenciales.")
     if not habilitado("HERMES_TELEGRAM_HABILITADO") and preguntar(
-        "¿Configurar Telegram ahora? Necesitas el token de @BotFather"
+        "¿Configurar tu bot de Telegram? Necesitas el token de @BotFather", True
     ):
         cambios["HERMES_TOKEN_TELEGRAM"] = solicitar_token(
             "Token de Telegram (oculto): ", r"[0-9]+:[A-Za-z0-9_-]+"
         )
         cambios["HERMES_TELEGRAM_HABILITADO"] = "true"
-    if not habilitado("HERMES_SLACK_HABILITADO") and preguntar("¿Configurar Slack ahora?"):
+    if not habilitado("HERMES_SLACK_HABILITADO") and preguntar(
+        "¿Configurar tu aplicación de Slack?", True
+    ):
+        print(
+            "Usa los dos tokens de la misma aplicación, instalada en tu espacio de trabajo "
+            "con Socket Mode habilitado. Consulta infraestructura/manifiesto_slack.ejemplo.yaml."
+        )
         cambios["HERMES_TOKEN_BOT_SLACK"] = solicitar_token(
             "Token del bot Slack (oculto): ", r"xoxb-[A-Za-z0-9-]+"
         )
@@ -176,26 +186,166 @@ async def preparar_administrador() -> int:
     return await crear_administrador(nombre, nombre_visible)
 
 
-async def ofrecer_vinculo() -> None:
+async def ofrecer_vinculo(
+    nombre_usuario: str | None = None, identidad_actual: str | None = None
+) -> bool:
     """Vincula una identidad solo si el operador aporta el ID y la cuenta."""
 
     if not obtener_configuracion().telegram_habilitado:
-        return
+        return False
     print("Abre tu bot en privado y envía /inicio para consultar tu ID numérico.")
     identificador = (
         await asyncio.to_thread(
-            input, "ID de Telegram para autorizar (Enter para hacerlo después): "
+            input,
+            "ID de Telegram para autorizar "
+            + (
+                f"[actual: {identidad_actual}; Enter para conservarlo]: "
+                if identidad_actual
+                else "(Enter para hacerlo después): "
+            ),
         )
     ).strip()
     if not identificador:
+        if identidad_actual:
+            print("Vínculo de Telegram existente conservado.")
+            return True
         print("Vínculo pendiente. Puedes repetir bash instalar.sh para completarlo.")
-        return
+        return False
     if not identificador.isascii() or not identificador.isdecimal() or len(identificador) > 19:
         raise ValueError("El ID de Telegram debe ser un entero positivo de hasta 19 dígitos.")
     usuario = (
-        await asyncio.to_thread(input, "Usuario Hermes que deseas vincular [administrador_local]: ")
-    ).strip() or "administrador_local"
+        nombre_usuario
+        or (
+            await asyncio.to_thread(
+                input, "Usuario Hermes que deseas vincular [administrador_local]: "
+            )
+        ).strip()
+        or "administrador_local"
+    )
     await vincular_telegram(usuario, int(identificador), None)
+    return True
+
+
+async def ofrecer_vinculo_slack(
+    nombre_usuario: str | None = None, identidad_actual: str | None = None
+) -> bool:
+    """Autoriza el propietario de Slack desde el mismo asistente de instalación."""
+
+    if not obtener_configuracion().slack_habilitado:
+        return False
+    print("Abre un mensaje directo a tu bot Slack y ejecuta /hermes ayuda.")
+    print("La respuesta de acceso denegado muestra tu ID de equipo y tu ID de usuario.")
+    equipo = (
+        (
+            await asyncio.to_thread(
+                input,
+                "ID del espacio de trabajo Slack "
+                + (
+                    f"[actual: {identidad_actual}; Enter para conservarlo]: "
+                    if identidad_actual
+                    else "(Enter para hacerlo después): "
+                ),
+            )
+        )
+        .strip()
+        .upper()
+    )
+    if not equipo:
+        if identidad_actual:
+            print("Vínculo de Slack existente conservado.")
+            return True
+        print("Vínculo de Slack pendiente. Puedes repetir bash instalar.sh para completarlo.")
+        return False
+    identificador_usuario = (
+        (await asyncio.to_thread(input, "ID de tu usuario Slack: ")).strip().upper()
+    )
+    # Usar exactamente el contrato de identidad del backend antes de abrir una sesión.
+    construir_identificador_slack(equipo, identificador_usuario)
+    usuario = (
+        nombre_usuario
+        or (
+            await asyncio.to_thread(
+                input, "Usuario Hermes que deseas vincular [administrador_local]: "
+            )
+        ).strip()
+        or "administrador_local"
+    )
+    await vincular_slack(usuario, equipo, identificador_usuario, None)
+    return True
+
+
+async def ofrecer_vinculos() -> None:
+    """Completa ambos canales y distingue autorización pendiente de acceso listo."""
+
+    configuracion = obtener_configuracion()
+    if not configuracion.telegram_habilitado and not configuracion.slack_habilitado:
+        print("Los canales de mensajería están deshabilitados; puedes configurarlos después.")
+        return
+    motor = crear_motor_base_datos(configuracion)
+    try:
+        async with crear_fabrica_sesiones(motor)() as sesion:
+            administradores = list(
+                (
+                    await sesion.scalars(
+                        select(Usuario).where(
+                            Usuario.activo.is_(True),
+                            Usuario.roles.any(Rol.nombre == "administrador"),
+                        )
+                    )
+                ).all()
+            )
+            if not administradores:
+                raise ValueError("Crea primero un administrador activo para autorizar tus canales.")
+            if len(administradores) == 1:
+                usuario = administradores[0]
+            else:
+                nombre = (
+                    (
+                        await asyncio.to_thread(
+                            input, "Usuario administrador que usarás en Telegram y Slack: "
+                        )
+                    )
+                    .strip()
+                    .lower()
+                )
+                usuario = next(
+                    (item for item in administradores if item.nombre_usuario == nombre), None
+                )
+                if usuario is None:
+                    raise ValueError("El usuario seleccionado no es un administrador activo.")
+            nombre_usuario = usuario.nombre_usuario
+            identidades = {
+                identidad.canal: identidad.identificador_externo
+                for identidad in usuario.identidades_mensajeria
+                if identidad.activo
+            }
+    finally:
+        await motor.dispose()
+    print(f"Se autorizarán tus cuentas de mensajería para el administrador {nombre_usuario}.")
+    resultados = []
+    if configuracion.telegram_habilitado:
+        resultados.append(
+            (
+                "Telegram",
+                await ofrecer_vinculo(
+                    nombre_usuario, identidades.get(TipoCanalMensajeria.TELEGRAM)
+                ),
+            )
+        )
+    if configuracion.slack_habilitado:
+        resultados.append(
+            (
+                "Slack",
+                await ofrecer_vinculo_slack(
+                    nombre_usuario, identidades.get(TipoCanalMensajeria.SLACK)
+                ),
+            )
+        )
+    for canal, autorizado in resultados:
+        print(
+            f"{canal}: {'usuario autorizado' if autorizado else 'autorización pendiente; el bot denegará el acceso'}."
+        )
+    print("Prueba /inicio en Telegram y /hermes ayuda en Slack para comprobar la conexión real.")
 
 
 def principal() -> int:
@@ -206,6 +356,8 @@ def principal() -> int:
         "administrador",
         "servicios",
         "vincular-telegram",
+        "vincular-slack",
+        "vincular-canales",
         "puerto-api",
     ):
         modos.add_argument(f"--{opcion}", action="store_true")
@@ -217,6 +369,10 @@ def principal() -> int:
             return asyncio.run(preparar_administrador())
         elif argumentos.vincular_telegram:
             asyncio.run(ofrecer_vinculo())
+        elif argumentos.vincular_slack:
+            asyncio.run(ofrecer_vinculo_slack())
+        elif argumentos.vincular_canales:
+            asyncio.run(ofrecer_vinculos())
         elif argumentos.puerto_api:
             print(obtener_configuracion().puerto_api)
         else:

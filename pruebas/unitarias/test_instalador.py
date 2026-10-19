@@ -7,12 +7,14 @@ import subprocess
 from getpass import getuser
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from dotenv import dotenv_values
 
 from aplicacion.comandos import configurar_instalacion as asistente
+from aplicacion.errores import ErrorHermes
+from aplicacion.modelos.enumeraciones import TipoCanalMensajeria
 
 RAIZ = Path(__file__).resolve().parents[2]
 
@@ -72,6 +74,25 @@ def test_token_no_se_imprime_y_se_reintenta_formato_invalido(
     assert "invalido" not in salida.out + salida.err
 
 
+def test_configura_credenciales_propias_de_ambos_canales(entorno_asistente, monkeypatch, capsys):
+    telegram = "123456789:" + "T" * 35
+    slack_bot = "xoxb-" + "B" * 30
+    slack_app = "xapp-" + "A" * 30
+    secretos = iter([telegram, slack_bot, slack_app])
+    monkeypatch.setattr(asistente, "getpass", lambda _: next(secretos))
+    responder(monkeypatch, ["", "", "n", "n"])
+    asistente.configurar()
+    valores = dotenv_values(".env")
+    assert valores["HERMES_TOKEN_TELEGRAM"] == telegram
+    assert valores["HERMES_TOKEN_BOT_SLACK"] == slack_bot
+    assert valores["HERMES_TOKEN_APLICACION_SLACK"] == slack_app
+    assert valores["HERMES_TELEGRAM_HABILITADO"] == "true"
+    assert valores["HERMES_SLACK_HABILITADO"] == "true"
+    assert valores["HERMES_HOST_BASE_DATOS"] == "127.0.0.1"
+    salida = capsys.readouterr()
+    assert all(token not in salida.out + salida.err for token in (telegram, slack_bot, slack_app))
+
+
 def test_no_cambia_credenciales_demostrativas_de_volumen_existente(entorno_asistente):
     shutil.copyfile(".env.ejemplo", ".env")
     original = Path(".env").read_bytes()
@@ -107,7 +128,9 @@ def cuenta_simulada(monkeypatch):
     sesion = AsyncMock()
     sesion.__aenter__.return_value = sesion
     monkeypatch.setattr(
-        asistente, "obtener_configuracion", lambda: SimpleNamespace(telegram_habilitado=True)
+        asistente,
+        "obtener_configuracion",
+        lambda: SimpleNamespace(telegram_habilitado=True, slack_habilitado=True),
     )
     monkeypatch.setattr(asistente, "crear_motor_base_datos", lambda _: motor)
     monkeypatch.setattr(asistente, "crear_fabrica_sesiones", lambda _: lambda: sesion)
@@ -160,6 +183,121 @@ async def test_vincula_telegram_solo_con_un_id_explicito(
         vincular.assert_awaited_once_with("mi_admin", 123456789, None)
     else:
         vincular.assert_not_awaited()
+
+
+@pytest.mark.parametrize("identificador", ["", "t012abc"])
+async def test_vincula_slack_solo_con_ids_explicitos(cuenta_simulada, monkeypatch, identificador):
+    vincular = AsyncMock()
+    monkeypatch.setattr(asistente, "vincular_slack", vincular)
+    responder(monkeypatch, [identificador, "u012abc"])
+    autorizado = await asistente.ofrecer_vinculo_slack("mi_admin")
+    if identificador:
+        assert autorizado is True
+        vincular.assert_awaited_once_with("mi_admin", "T012ABC", "U012ABC", None)
+    else:
+        assert autorizado is False
+        vincular.assert_not_awaited()
+
+
+async def test_slack_no_vincula_identificadores_invalidos(cuenta_simulada, monkeypatch):
+    vincular = AsyncMock()
+    monkeypatch.setattr(asistente, "vincular_slack", vincular)
+    responder(monkeypatch, ["equipo invalido", "U012ABC"])
+    with pytest.raises(ErrorHermes):
+        await asistente.ofrecer_vinculo_slack("mi_admin")
+    vincular.assert_not_awaited()
+
+
+@pytest.mark.parametrize("canal", ["telegram", "slack"])
+async def test_repetir_conserva_identidades_activas(cuenta_simulada, monkeypatch, canal):
+    vincular = AsyncMock()
+    monkeypatch.setattr(asistente, f"vincular_{canal}", vincular)
+    responder(monkeypatch, [""])
+    funcion = asistente.ofrecer_vinculo if canal == "telegram" else asistente.ofrecer_vinculo_slack
+    identidad = "123456789" if canal == "telegram" else "T012ABC:U012ABC"
+    assert await funcion("mi_admin", identidad) is True
+    vincular.assert_not_awaited()
+
+
+def administradores_simulados(sesion, administradores):
+    resultado = Mock()
+    resultado.all.return_value = administradores
+    sesion.scalars.return_value = resultado
+
+
+async def test_asistente_autoriza_ambos_canales_al_administrador_creado(
+    cuenta_simulada, monkeypatch
+):
+    motor, sesion, _ = cuenta_simulada
+    administradores_simulados(
+        sesion,
+        [
+            SimpleNamespace(
+                nombre_usuario="admin_personalizado",
+                identidades_mensajeria=[
+                    SimpleNamespace(
+                        canal=TipoCanalMensajeria.TELEGRAM,
+                        identificador_externo="123456789",
+                        activo=True,
+                    )
+                ],
+            )
+        ],
+    )
+    telegram = AsyncMock(return_value=True)
+    slack = AsyncMock(return_value=True)
+    monkeypatch.setattr(asistente, "ofrecer_vinculo", telegram)
+    monkeypatch.setattr(asistente, "ofrecer_vinculo_slack", slack)
+    await asistente.ofrecer_vinculos()
+    telegram.assert_awaited_once_with("admin_personalizado", "123456789")
+    slack.assert_awaited_once_with("admin_personalizado", None)
+    motor.dispose.assert_awaited_once()
+
+
+async def test_sin_autorizacion_el_asistente_informa_pendiente(
+    cuenta_simulada, monkeypatch, capsys
+):
+    _, sesion, _ = cuenta_simulada
+    administradores_simulados(
+        sesion, [SimpleNamespace(nombre_usuario="mi_admin", identidades_mensajeria=[])]
+    )
+    monkeypatch.setattr(asistente, "ofrecer_vinculo", AsyncMock(return_value=False))
+    monkeypatch.setattr(asistente, "ofrecer_vinculo_slack", AsyncMock(return_value=False))
+    await asistente.ofrecer_vinculos()
+    salida = capsys.readouterr().out
+    assert "Telegram: autorización pendiente" in salida
+    assert "Slack: autorización pendiente" in salida
+    assert "usuario autorizado" not in salida
+
+
+async def test_varios_administradores_exigen_seleccion_explicita(cuenta_simulada, monkeypatch):
+    _, sesion, _ = cuenta_simulada
+    administradores_simulados(
+        sesion,
+        [
+            SimpleNamespace(nombre_usuario="admin_uno", identidades_mensajeria=[]),
+            SimpleNamespace(nombre_usuario="admin_dos", identidades_mensajeria=[]),
+        ],
+    )
+    telegram = AsyncMock(return_value=True)
+    slack = AsyncMock(return_value=True)
+    monkeypatch.setattr(asistente, "ofrecer_vinculo", telegram)
+    monkeypatch.setattr(asistente, "ofrecer_vinculo_slack", slack)
+    responder(monkeypatch, ["admin_dos"])
+    await asistente.ofrecer_vinculos()
+    telegram.assert_awaited_once_with("admin_dos", None)
+    slack.assert_awaited_once_with("admin_dos", None)
+
+
+async def test_no_vincula_si_no_hay_administrador_activo(cuenta_simulada, monkeypatch):
+    motor, sesion, _ = cuenta_simulada
+    administradores_simulados(sesion, [])
+    vincular = AsyncMock()
+    monkeypatch.setattr(asistente, "ofrecer_vinculo_slack", vincular)
+    with pytest.raises(ValueError, match="administrador activo"):
+        await asistente.ofrecer_vinculos()
+    vincular.assert_not_awaited()
+    motor.dispose.assert_awaited_once()
 
 
 @pytest.fixture
@@ -253,6 +391,7 @@ def test_bash_instala_servicios_y_puede_repetirse(instalacion_simulada):
         assert codigo == 0, salida
         assert "systemctl restart hermes-telegram.service" in registro
         assert "systemctl disable --now hermes-slack.service" in registro
+        assert "configurar_instalacion --vincular-canales" in registro
         assert "compose --env-file .env -f infraestructura/compose.yaml up -d --wait" in registro
         assert "http://127.0.0.1:8123/salud" in registro
         unidad = (raiz / "unidades/hermes-api.service").read_text()
