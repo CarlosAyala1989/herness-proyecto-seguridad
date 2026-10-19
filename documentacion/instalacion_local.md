@@ -1,5 +1,10 @@
 # Instalación local
 
+Para descargar el programa e instalarlo con `curl | bash`, o instalar una copia
+ya descargada con `bash instalar.sh`, sigue
+[`instalacion_automatica.md`](instalacion_automatica.md). Esta guía conserva el
+procedimiento manual para desarrollo y diagnóstico.
+
 Esta guía permite iniciar y comprobar los hitos 1 a 12 de Hermes en Ubuntu 24.04.
 Los servicios escuchan únicamente en el equipo local y no requieren una VPS.
 

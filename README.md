@@ -127,6 +127,31 @@ API de administración ni pretende validar Telegram, Slack o VMs reales.
 - Docker con Docker Compose.
 - Git.
 
+## Instalación automática
+
+En Ubuntu 24.04 con systemd, desde una terminal y con un usuario normal que
+tenga acceso a `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CarlosAyala1989/herness-proyecto-seguridad/main/instalar.sh | bash
+```
+
+El comando descarga Hermes por HTTPS en `~/.local/share/hermes`, instala las
+dependencias, genera las contraseñas de MariaDB, crea el administrador y
+configura el arranque automático. Puedes introducir los tokens de Telegram y
+Slack de forma oculta o hacerlo después. Al repetirlo, actualiza el código y
+conserva la configuración y los datos. Después registra los servidores y sus
+claves SSH. El instalador y sus archivos deben estar publicados en `main` para
+que la URL funcione.
+
+Si ya descargaste el repositorio, también puedes usar `bash instalar.sh` desde
+su carpeta: utiliza directamente esa copia, sin descargar otra.
+
+Consulta [`documentacion/instalacion_automatica.md`](documentacion/instalacion_automatica.md)
+para los requisitos, credenciales, servicios y alcance de la verificación.
+
+## Instalación manual
+
 Las instrucciones completas de instalación y comprobación están en
 [`documentacion/instalacion_local.md`](documentacion/instalacion_local.md).
 
