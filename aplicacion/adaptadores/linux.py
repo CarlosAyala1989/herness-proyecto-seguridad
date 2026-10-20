@@ -103,9 +103,9 @@ printf 'nombre_equipo=%s\n' "$nombre_equipo"
         if operacion:
             bloque_operacion = f"""
 if [ "$(id -u)" -eq 0 ]; then
-    systemctl {operacion} -- "$nombre_servicio"
+    systemctl {operacion} -- "$nombre_servicio" || exit $?
 elif command -v sudo >/dev/null 2>&1; then
-    sudo -n systemctl {operacion} -- "$nombre_servicio"
+    sudo -n systemctl {operacion} -- "$nombre_servicio" || exit $?
 else
     exit 126
 fi
