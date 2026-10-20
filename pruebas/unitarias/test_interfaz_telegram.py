@@ -1,9 +1,12 @@
 """Pruebas de la interfaz Telegram sin conectarse a Telegram."""
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from importlib.resources import files
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pydantic import ValidationError
@@ -33,6 +36,7 @@ from aplicacion.interfaces.telegram.bot import (
     CLAVE_CONFIRMACION_REINICIO,
     CLAVE_SELECCION_SERVIDORES,
     CLAVE_SERVIDOR_SELECCIONADO,
+    COMANDOS_TELEGRAM,
     InterfazTelegram,
     crear_aplicacion_telegram,
 )
@@ -823,6 +827,116 @@ def test_construye_cliente_sin_abrir_la_red(configuracion_telegram: Configuracio
 
     assert aplicacion.bot.token.endswith("12345")
     assert len(aplicacion.handlers[0]) >= 10
+    assert any(
+        "tutorial" in getattr(manejador, "commands", ()) for manejador in aplicacion.handlers[0]
+    )
+
+
+@pytest.mark.asyncio
+async def test_tutorial_entrega_documento_completo_sin_seleccion_y_desde_otro_directorio(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    mensaje = MensajeSimulado()
+    contenido = (
+        files("aplicacion.interfaces.telegram")
+        .joinpath("recursos/tutorial_telegram.md")
+        .read_bytes()
+    )
+    monkeypatch.chdir(tmp_path)
+
+    await interfaz.enviar_tutorial(_actualizacion(mensaje), _contexto())
+
+    gestor.comprobar_acceso.assert_awaited_once_with(123_456, 900)
+    assert mensaje.documentos == [(contenido, "tutorial_hermes.md")]
+    assert len(gestor.mock_calls) == 1
+    assert not mensaje.respuestas
+    assert "/tutorial" in interfaz._texto_ayuda()
+
+
+@pytest.mark.asyncio
+async def test_tutorial_no_lee_el_recurso_si_el_usuario_no_esta_autorizado(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.side_effect = ErrorIdentidadMensajeriaNoAutorizada()
+    recurso = Mock()
+    monkeypatch.setattr("aplicacion.interfaces.telegram.bot.files", recurso)
+    mensaje = MensajeSimulado()
+
+    await interfaz.enviar_tutorial(_actualizacion(mensaje), _contexto())
+
+    assert not mensaje.documentos
+    assert "Acceso denegado" in mensaje.respuestas[-1][0]
+    recurso.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_tutorial_rechaza_chats_de_grupo(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    mensaje = MensajeSimulado()
+
+    await interfaz.enviar_tutorial(_actualizacion(mensaje, tipo_conversacion="group"), _contexto())
+
+    gestor.comprobar_acceso.assert_not_awaited()
+    assert not mensaje.documentos
+    assert "conversaciones privadas" in mensaje.respuestas[-1][0]
+
+
+@pytest.mark.asyncio
+async def test_tutorial_no_acepta_rutas_ni_argumentos(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    mensaje = MensajeSimulado()
+
+    await interfaz.enviar_tutorial(_actualizacion(mensaje), _contexto(".env"))
+
+    assert not mensaje.documentos
+    assert mensaje.respuestas[-1][0] == "Uso correcto: /tutorial."
+
+
+@pytest.mark.asyncio
+async def test_tutorial_informa_si_falta_el_documento_sin_exponer_rutas(
+    interfaz_telegram: tuple[InterfazTelegram, AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    recurso = Mock()
+    recurso.return_value.joinpath.return_value.read_bytes.side_effect = FileNotFoundError(
+        "ruta privada"
+    )
+    monkeypatch.setattr("aplicacion.interfaces.telegram.bot.files", recurso)
+    mensaje = MensajeSimulado()
+
+    await interfaz.enviar_tutorial(_actualizacion(mensaje), _contexto())
+
+    assert not mensaje.documentos
+    assert (
+        mensaje.respuestas[-1][0]
+        == "El tutorial no está disponible. Revisa la instalación de Hermes."
+    )
+
+
+def test_tutorial_documenta_todos_los_comandos_del_menu_y_el_alias_start() -> None:
+    contenido = (
+        files("aplicacion.interfaces.telegram")
+        .joinpath("recursos/tutorial_telegram.md")
+        .read_text(encoding="utf-8")
+    )
+    comandos_documentados = re.findall(r"^### /([a-z_]+)\b", contenido, re.MULTILINE)
+    comandos_esperados = {comando.command for comando in COMANDOS_TELEGRAM} | {"start"}
+
+    assert set(comandos_documentados) == comandos_esperados
+    assert len(comandos_documentados) == len(comandos_esperados)
 
 
 @pytest.mark.asyncio

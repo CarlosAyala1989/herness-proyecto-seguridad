@@ -35,6 +35,9 @@ desarrollo = [
 [tool.setuptools.packages.find]
 include = ["aplicacion*"]
 
+[tool.setuptools.package-data]
+"aplicacion.interfaces.telegram" = ["recursos/*.md"]
+
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers -m 'not integracion'"
 asyncio_mode = "auto"

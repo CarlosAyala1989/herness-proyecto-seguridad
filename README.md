@@ -236,6 +236,9 @@ El catálogo y sus controles se describen en
 [`documentacion/motor_acciones.md`](documentacion/motor_acciones.md).
 La activación y el uso del bot se explican en
 [`documentacion/telegram.md`](documentacion/telegram.md).
+En el chat, `/tutorial` entrega un archivo Markdown con todos los comandos,
+ejemplos y requisitos. La guía completa está en
+[`tutorial_telegram.md`](aplicacion/interfaces/telegram/recursos/tutorial_telegram.md).
 La creación, vinculación y uso de la aplicación Slack se explica en
 [`documentacion/slack.md`](documentacion/slack.md).
 La obtención y normalización de métricas se detalla en

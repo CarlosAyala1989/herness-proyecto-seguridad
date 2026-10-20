@@ -171,6 +171,7 @@ preparar el inventario y administrar usuarios.
 | --- | --- |
 | `/inicio` | Comprueba el acceso y muestra la ayuda. |
 | `/ayuda` | Muestra las operaciones disponibles. |
+| `/tutorial` | Envía la guía completa como documento Markdown adjunto. |
 | `/servidores` | Lista los servidores activos con botones de selección. |
 | `/grupos` | Lista los grupos con botones de selección. |
 | `/seleccionar <id>` | Selecciona un servidor mediante un entero validado. |
@@ -203,6 +204,13 @@ preparar el inventario y administrar usuarios.
 
 Telegram envía `/start` al abrir ciertos enlaces del bot; Hermes lo admite como
 alias técnico externo de `/inicio`, pero no lo publica en su menú en español.
+
+Envía `/tutorial` sin argumentos para recibir `tutorial_hermes.md`, con sintaxis,
+ejemplos, requisitos, confirmaciones y solución de problemas de todos los comandos.
+Solo se entrega al propietario autorizado en un chat privado y no requiere
+seleccionar un servidor ni preparar SFTP. El documento está incluido en la
+instalación y puede consultarse también en
+[`tutorial_telegram.md`](../aplicacion/interfaces/telegram/recursos/tutorial_telegram.md).
 
 ## Prueba segura desde Telegram
 

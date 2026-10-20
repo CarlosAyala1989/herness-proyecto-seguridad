@@ -2,9 +2,11 @@
 
 import logging
 import secrets
+from asyncio import to_thread
 from collections import deque
 from dataclasses import dataclass
 from hmac import compare_digest
+from importlib.resources import files
 from io import BytesIO
 from time import monotonic
 from typing import Literal
@@ -81,6 +83,7 @@ class ConfirmacionDespliegue:
 COMANDOS_TELEGRAM = (
     BotCommand("inicio", "Iniciar Hermes y comprobar autorización"),
     BotCommand("ayuda", "Mostrar los comandos disponibles"),
+    BotCommand("tutorial", "Descargar el tutorial completo en Markdown"),
     BotCommand("servidores", "Listar y seleccionar un servidor"),
     BotCommand("grupos", "Listar y seleccionar un grupo"),
     BotCommand("seleccionar", "Seleccionar un servidor por identificador"),
@@ -134,6 +137,7 @@ class InterfazTelegram(CanalMensajeria):
         self._aplicacion = aplicacion
         aplicacion.add_handler(CommandHandler(["inicio", "start"], self.iniciar))
         aplicacion.add_handler(CommandHandler("ayuda", self.mostrar_ayuda))
+        aplicacion.add_handler(CommandHandler("tutorial", self.enviar_tutorial))
         aplicacion.add_handler(CommandHandler("servidores", self.mostrar_servidores))
         aplicacion.add_handler(CommandHandler("grupos", self.mostrar_grupos))
         aplicacion.add_handler(CommandHandler("seleccionar", self.seleccionar_por_comando))
@@ -302,6 +306,7 @@ class InterfazTelegram(CanalMensajeria):
     def _texto_ayuda() -> str:
         return (
             "Comandos disponibles:\n"
+            "/tutorial — descargar la guía completa con ejemplos (.md)\n"
             "/servidores — listar y elegir un servidor\n"
             "/grupos — listar y elegir un grupo\n"
             "/seleccionar <id> — elegir un servidor\n"
@@ -350,6 +355,32 @@ class InterfazTelegram(CanalMensajeria):
 
         if await self._autorizar(actualizacion) is not None:
             await self._responder(actualizacion, self._texto_ayuda())
+
+    async def enviar_tutorial(self, actualizacion: Update, contexto: CallbackContext) -> None:
+        """Entrega el recurso incluido con la aplicación solo después de autorizar."""
+
+        if await self._autorizar(actualizacion) is None:
+            return
+        if contexto.args:
+            await self._responder(actualizacion, "Uso correcto: /tutorial.")
+            return
+        mensaje = actualizacion.effective_message
+        if mensaje is None:
+            return
+        recurso = files("aplicacion.interfaces.telegram").joinpath("recursos/tutorial_telegram.md")
+        try:
+            contenido = await to_thread(recurso.read_bytes)
+        except OSError:
+            registrador.error("El tutorial incluido con Hermes no está disponible.")
+            await self._responder(
+                actualizacion, "El tutorial no está disponible. Revisa la instalación de Hermes."
+            )
+            return
+        await mensaje.reply_document(
+            document=BytesIO(contenido),
+            filename="tutorial_hermes.md",
+            caption="Tutorial completo de Hermes: comandos, ejemplos, requisitos y solución de problemas.",
+        )
 
     async def mostrar_servidores(
         self,
