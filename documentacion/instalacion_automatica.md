@@ -40,6 +40,13 @@ los identificadores de usuario determinan quién puede administrarlo. Por eso
 hay que completar también esa autorización, además de crear el administrador
 local. No se concede acceso automáticamente al primer desconocido que escriba.
 
+Telegram admite un único propietario. El asistente guarda su ID numérico como
+`HERMES_ID_PROPIETARIO_TELEGRAM` en `.env`. Un `@usuario` no concede acceso, y
+otras identidades de Telegram vinculadas a Hermes tampoco pueden ejecutar
+órdenes ni recibir alertas. Al terminar, el instalador reinicia Telegram y los
+trabajadores habilitados para cargar el propietario. Si no lo configuras, el
+bot permanece bloqueado hasta completar la vinculación desde la terminal.
+
 Telegram y Slack siguen siendo los proveedores de mensajería: los mensajes y
 respuestas pasan por sus servicios. Durante la instalación se descargan el
 código y las dependencias desde sus repositorios. «Autohospedado» significa que
@@ -95,6 +102,8 @@ muestra el commit descargado.
     si hay varios, el asistente solicita elegirla. Al repetir la instalación,
     Enter permite conservar los vínculos activos existentes. Si omites un vínculo
     nuevo, se informa «autorización pendiente» y el bot seguirá denegando el acceso.
+    El ID de Telegram elegido queda fijado como propietario único; no se intenta
+    descubrir automáticamente al creador de BotFather ni resolver personas por `@`.
 
 El instalador no ejecuta `.env` como código ni imprime los tokens. No inicia
 Uvicorn en modo de recarga. La API queda en `127.0.0.1`, con el puerto definido

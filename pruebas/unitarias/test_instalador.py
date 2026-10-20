@@ -123,7 +123,7 @@ def test_configuracion_invalida_no_reemplaza_env_existente(entorno_asistente, mo
 
 
 @pytest.fixture
-def cuenta_simulada(monkeypatch):
+def cuenta_simulada(monkeypatch, entorno_asistente):
     motor = AsyncMock()
     sesion = AsyncMock()
     sesion.__aenter__.return_value = sesion

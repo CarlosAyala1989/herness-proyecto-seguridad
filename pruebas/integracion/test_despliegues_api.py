@@ -427,6 +427,7 @@ async def test_despliega_verifica_revierte_y_restaurar_ante_fallo(
         estados = [item["estado"] for item in historial.json()]
         assert estados == ["fallido", "fallido", "revertido", "fallido", "completado"]
 
+    aplicacion.state.configuracion.id_propietario_telegram = identificador_telegram
     gestor_telegram = GestorTelegram(
         aplicacion.state.fabrica_sesiones,
         TransporteDespliegueSimulado,

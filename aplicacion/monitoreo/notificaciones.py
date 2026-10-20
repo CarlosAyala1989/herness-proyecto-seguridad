@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from telegram import Bot
 
 from aplicacion.configuracion import Configuracion
-from aplicacion.errores import ErrorHermes
+from aplicacion.errores import ErrorHermes, ErrorIdentidadMensajeriaNoAutorizada
 from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import (
     EstadoNotificacionAlerta,
@@ -42,9 +42,10 @@ class NotificadorMensajeria(Protocol):
 class NotificadorTelegram:
     """Entrega mensajes mediante el cliente oficial ya configurado."""
 
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, id_propietario: int | None = None) -> None:
         self._bot = Bot(token=token)
         self._inicializado = False
+        self._id_propietario = id_propietario
 
     async def enviar_mensaje(self, identificador_destino: str, mensaje: str) -> None:
         if (
@@ -53,6 +54,8 @@ class NotificadorTelegram:
             or not 1 <= int(identificador_destino) <= 9_223_372_036_854_775_807
         ):
             raise ValueError("El destino de Telegram no es numérico.")
+        if self._id_propietario is None or identificador_destino != str(self._id_propietario):
+            raise ErrorIdentidadMensajeriaNoAutorizada()
         if not self._inicializado:
             await self._bot.initialize()
             self._inicializado = True
@@ -127,9 +130,13 @@ def crear_notificadores(
     """Crea únicamente proveedores habilitados y con secretos validados."""
 
     notificadores: dict[TipoCanalMensajeria, NotificadorMensajeria] = {}
-    if configuracion.telegram_habilitado and configuracion.token_telegram is not None:
+    if (
+        configuracion.telegram_habilitado
+        and configuracion.token_telegram is not None
+        and configuracion.id_propietario_telegram is not None
+    ):
         notificadores[TipoCanalMensajeria.TELEGRAM] = NotificadorTelegram(
-            configuracion.token_telegram.get_secret_value()
+            configuracion.token_telegram.get_secret_value(), configuracion.id_propietario_telegram
         )
     if configuracion.slack_habilitado and configuracion.token_bot_slack is not None:
         notificadores[TipoCanalMensajeria.SLACK] = NotificadorSlack(

@@ -213,6 +213,10 @@ class InterfazTelegram(CanalMensajeria):
     async def enviar_mensaje(self, identificador_destino: str, mensaje: str) -> None:
         """Permite reutilizar el canal para notificaciones de hitos posteriores."""
 
+        if self._configuracion.id_propietario_telegram is None or identificador_destino != str(
+            self._configuracion.id_propietario_telegram
+        ):
+            raise ErrorIdentidadMensajeriaNoAutorizada()
         if self._aplicacion is None:
             raise RuntimeError("La interfaz Telegram todavía no está inicializada.")
         await self._aplicacion.bot.send_message(

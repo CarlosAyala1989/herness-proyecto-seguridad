@@ -118,6 +118,7 @@ async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramInteg
     fabrica_sesiones = crear_fabrica_sesiones(motor)
     prefijo = f"telegram-{uuid4().hex[:10]}"
     identificador_autorizado = 700_000_001
+    configuracion.id_propietario_telegram = identificador_autorizado
     identificador_equipo_slack = "T012PRUEBA9"
     identificador_usuario_slack = "U012PRUEBA9"
 
@@ -529,10 +530,12 @@ async def test_asistente_recupera_y_conserva_ambas_identidades_persistentes(
     contexto_telegram_integracion: ContextoTelegramIntegracion,
     monkeypatch,
     capsys,
+    tmp_path,
 ) -> None:
     configuracion = Configuracion().model_copy(  # type: ignore[call-arg]
         update={"telegram_habilitado": True, "slack_habilitado": True}
     )
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(asistente_instalacion, "obtener_configuracion", lambda: configuracion)
     nombre = f"{contexto_telegram_integracion.prefijo}-usuario"
 
@@ -563,3 +566,62 @@ async def test_asistente_recupera_y_conserva_ambas_identidades_persistentes(
         )
         == "Administrador Telegram"
     )
+
+
+@pytest.mark.integracion
+@pytest.mark.asyncio
+async def test_rechaza_otro_telegram_aunque_este_vinculado_a_un_administrador(
+    contexto_telegram_integracion: ContextoTelegramIntegracion,
+) -> None:
+    contexto = contexto_telegram_integracion
+    segundo_id = 700_000_002
+    # Otra cuenta con rol administrador puede estar vinculada, pero no es el propietario.
+    async with contexto.fabrica_sesiones() as sesion:
+        propietario = await sesion.scalar(
+            select(Usuario).where(Usuario.nombre_usuario == f"{contexto.prefijo}-usuario")
+        )
+        assert propietario is not None
+        otro = Usuario(
+            nombre_usuario=f"{contexto.prefijo}-otro",
+            nombre_mostrar="Otro administrador",
+            hash_contrasena=propietario.hash_contrasena,
+            activo=True,
+            roles=list(propietario.roles),
+        )
+        sesion.add(otro)
+        await sesion.commit()
+        await vincular_identidad_telegram(sesion, otro.nombre_usuario, segundo_id)
+    with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
+        await contexto.gestor.comprobar_acceso(segundo_id, 3100)
+    with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
+        await contexto.gestor.ejecutar_accion(
+            segundo_id,
+            3101,
+            contexto.id_servidor_activo,
+            "obtener_identidad",
+            SolicitudEjecucionAccion(),
+        )
+    assert (
+        await contexto.gestor.comprobar_acceso(contexto.identificador_autorizado, 3104)
+        == "Administrador Telegram"
+    )
+    # Quitar el vínculo del propietario tampoco promueve al otro ID.
+    async with contexto.fabrica_sesiones() as sesion:
+        await desactivar_identidad_telegram(sesion, f"{contexto.prefijo}-usuario")
+    with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
+        await contexto.gestor.comprobar_acceso(contexto.identificador_autorizado, 3102)
+    with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
+        await contexto.gestor.comprobar_acceso(segundo_id, 3103)
+    async with contexto.fabrica_sesiones() as sesion:
+        registros = list(
+            (
+                await sesion.scalars(
+                    select(RegistroAuditoria).where(
+                        RegistroAuditoria.identificador_solicitud.in_(
+                            ["tg:3100", "tg:3101", "tg:3102", "tg:3103"]
+                        )
+                    )
+                )
+            ).all()
+        )
+    assert len(registros) == 4

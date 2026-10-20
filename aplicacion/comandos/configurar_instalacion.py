@@ -2,11 +2,9 @@
 
 import argparse
 import asyncio
-import os
 import re
 import secrets
 import sys
-import tempfile
 from getpass import getpass
 from io import StringIO
 from pathlib import Path
@@ -20,6 +18,11 @@ from aplicacion.comandos.crear_administrador import crear_administrador
 from aplicacion.comandos.vincular_usuario_slack import ejecutar as vincular_slack
 from aplicacion.comandos.vincular_usuario_telegram import ejecutar as vincular_telegram
 from aplicacion.configuracion import Configuracion, obtener_configuracion
+from aplicacion.configuracion_local import (
+    fijar_propietario_telegram,
+    guardar_configuracion,
+    sustituir_variable,
+)
 from aplicacion.errores import ErrorHermes
 from aplicacion.modelos.acceso import Rol, Usuario
 from aplicacion.modelos.enumeraciones import TipoCanalMensajeria
@@ -47,30 +50,6 @@ def solicitar_token(texto: str, patron: str) -> str:
         if re.fullmatch(patron, token) and len(token) >= 20:
             return token
         print("El formato del token no es válido. Vuelve a introducirlo.")
-
-
-def guardar_configuracion(ruta: Path, contenido: str) -> None:
-    """Reemplaza el archivo de forma atómica y con permisos privados."""
-
-    if ruta.is_symlink():
-        raise ValueError("El archivo .env no puede ser un enlace simbólico.")
-    descriptor, temporal = tempfile.mkstemp(prefix=".hermes-config-", dir=ruta.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as archivo:
-            archivo.write(contenido)
-        os.replace(temporal, ruta)
-    finally:
-        Path(temporal).unlink(missing_ok=True)
-
-
-def sustituir_variable(contenido: str, nombre: str, valor: str) -> str:
-    """Actualiza valores simples del asistente conservando las demás líneas."""
-
-    patron = rf"(?m)^(?:export[ \t]+)?{re.escape(nombre)}[ \t]*=.*$"
-    linea = f"{nombre}={valor}"
-    if re.search(patron, contenido):
-        return re.sub(patron, lambda _: linea, contenido)
-    return contenido.rstrip("\n") + "\n" + linea + "\n"
 
 
 def configurar(ruta: Path = Path(".env"), ejemplo: Path = Path(".env.ejemplo")) -> None:
@@ -194,6 +173,7 @@ async def ofrecer_vinculo(
     if not obtener_configuracion().telegram_habilitado:
         return False
     print("Abre tu bot en privado y envía /inicio para consultar tu ID numérico.")
+    print("Se fijará como propietario único. Usa tu ID numérico, no tu @usuario.")
     identificador = (
         await asyncio.to_thread(
             input,
@@ -207,6 +187,7 @@ async def ofrecer_vinculo(
     ).strip()
     if not identificador:
         if identidad_actual:
+            fijar_propietario_telegram(int(identidad_actual))
             print("Vínculo de Telegram existente conservado.")
             return True
         print("Vínculo pendiente. Puedes repetir bash instalar.sh para completarlo.")

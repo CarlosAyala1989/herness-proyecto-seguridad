@@ -20,15 +20,28 @@ cambiar y se guarda, si se desea, solo como referencia visual. El teléfono no s
 utiliza: un bot no lo recibe por defecto y un contacto compartido no sustituye
 la identidad de la actualización.
 
+El bot obedece exclusivamente al propietario fijado en
+`HERMES_ID_PROPIETARIO_TELEGRAM`. Otros usuarios quedan bloqueados aunque tengan
+un vínculo activo y rol de administrador en MariaDB. Si el ID no está configurado,
+el bot solo deniega el acceso e informa el ID del remitente para completar la
+instalación; no ejecuta órdenes ni envía notificaciones automáticas.
+
+La API del bot no indica quién lo creó en BotFather. El administrador del
+servidor debe fijar explícitamente a esa persona desde la terminal. No se
+autoriza mediante `@usuario`, nombre visible, mensajes reenviados ni por ser
+el primero que escriba al bot. Una vez fijado el ID, cambiar el `@usuario` no
+cambia los permisos. Los botones y comandos vuelven a comprobar el mismo ID.
+
 Para aceptar una operación deben cumplirse todas estas condiciones:
 
 1. La conversación es privada.
-2. El identificador de Telegram tiene un vínculo activo en
+2. El identificador numérico coincide con el propietario configurado.
+3. El identificador de Telegram tiene un vínculo activo en
    `identidades_mensajeria`.
-3. El usuario de Hermes vinculado está activo.
-4. Al menos uno de sus roles concede el permiso necesario.
-5. La selección de servidores existe y respeta el máximo configurado.
-6. Los parámetros cumplen el esquema cerrado de la acción.
+4. El usuario de Hermes vinculado está activo.
+5. Al menos uno de sus roles concede el permiso necesario.
+6. La selección de servidores existe y respeta el máximo configurado.
+7. Los parámetros cumplen el esquema cerrado de la acción.
 
 Una identidad desconocida recibe una denegación y su propio identificador para
 que el administrador pueda vincularla. El intento queda auditado sin copiar el
@@ -47,6 +60,7 @@ Configuración local:
 ```dotenv
 HERMES_TELEGRAM_HABILITADO=true
 HERMES_TOKEN_TELEGRAM=token_real_entregado_por_botfather
+HERMES_ID_PROPIETARIO_TELEGRAM=
 HERMES_TIEMPO_CONFIRMACION_TELEGRAM_SEGUNDOS=60
 HERMES_MAX_SERVIDORES_MOSTRADOS_TELEGRAM=50
 ```
@@ -83,8 +97,23 @@ python -m aplicacion.comandos.vincular_usuario_telegram \
   --nombre-telegram nombre_visible_opcional
 ```
 
-Sustituye el número del ejemplo. Repite `/inicio`; ahora debe aparecer la ayuda.
-La vinculación es persistente después de reiniciar el bot.
+Sustituye el número del ejemplo por tu propio ID. El comando guarda el vínculo
+en MariaDB y fija ese ID como propietario único en el `.env` privado. Reinicia
+el bot para cargarlo y repite `/inicio`; ahora debe aparecer la ayuda.
+El instalador hace este reinicio automáticamente al terminar. Para una instalación
+ya iniciada como servicios, reinicia los procesos habilitados que utilizan Telegram:
+
+```bash
+sudo systemctl restart hermes-telegram
+# Solo si están habilitados:
+sudo systemctl restart hermes-monitoreo hermes-tareas
+```
+
+Si lo ejecutaste manualmente, detén y vuelve a iniciar el proceso de Python.
+La vinculación y el propietario se conservan después del reinicio. Cambiar de
+propietario requiere ejecutar de nuevo el comando local con el ID correcto y
+reiniciar los procesos; editar datos o roles en MariaDB no autoriza a otro ID.
+Revocar el vínculo del propietario no promueve automáticamente a otra persona.
 
 Para revocar solo este canal:
 
@@ -234,6 +263,8 @@ nunca sobre una cuenta necesaria del anfitrión.
 ## Controles operativos
 
 - El bot usa sondeo saliente; no necesita webhook, dominio ni puertos públicos.
+- Solo el ID del propietario configurado puede acceder a las operaciones y
+  recibir alertas o resultados de tareas por Telegram.
 - Las actualizaciones pendientes se descartan al iniciar para evitar acciones
   antiguas.
 - Las actualizaciones de Telegram se procesan secuencialmente para conservar el

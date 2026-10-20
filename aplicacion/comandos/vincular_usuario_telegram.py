@@ -1,4 +1,4 @@
-"""Comando local para autorizar una identidad de Telegram."""
+"""Comando local para vincular y fijar al propietario único de Telegram."""
 
 import argparse
 import asyncio
@@ -6,6 +6,7 @@ import sys
 
 from aplicacion.base_datos import crear_fabrica_sesiones, crear_motor_base_datos
 from aplicacion.configuracion import obtener_configuracion
+from aplicacion.configuracion_local import fijar_propietario_telegram
 from aplicacion.errores import ErrorHermes
 from aplicacion.servicios.gestor_identidades_mensajeria import vincular_identidad_telegram
 
@@ -14,7 +15,7 @@ def crear_analizador() -> argparse.ArgumentParser:
     """Define argumentos sin solicitar ni mostrar secretos."""
 
     analizador = argparse.ArgumentParser(
-        description="Vincula un usuario de Hermes con su identificador numérico de Telegram."
+        description="Vincula un usuario Hermes y fija su ID como propietario único de Telegram."
     )
     analizador.add_argument("--usuario", required=True, help="Nombre del usuario de Hermes.")
     analizador.add_argument(
@@ -43,9 +44,13 @@ async def ejecutar(nombre_usuario: str, identificador_telegram: int, nombre: str
                 identificador_telegram,
                 nombre,
             )
+        fijar_propietario_telegram(identificador_telegram)
         print(
             "Identidad de Telegram vinculada correctamente "
             f"al usuario {nombre_usuario.strip().lower()}."
+        )
+        print(
+            "Propietario único de Telegram guardado en .env. Reinicia los procesos Hermes para aplicarlo."
         )
         if identidad.id_identidad_mensajeria is None:
             raise RuntimeError("La identidad vinculada no recibió un identificador.")

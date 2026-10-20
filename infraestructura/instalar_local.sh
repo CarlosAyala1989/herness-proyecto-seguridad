@@ -173,6 +173,12 @@ while read -r servicio habilitado; do
     fi
 done <<< "$HERMES_SERVICIOS"
 .venv/bin/python -m aplicacion.comandos.configurar_instalacion --vincular-canales
+# El ID del propietario se fija al autorizarlo; recargar los procesos que lo usan.
+while read -r servicio habilitado; do
+    if [[ "$habilitado" == true && "$servicio" =~ ^(telegram|monitoreo|tareas)$ ]]; then
+        sudo systemctl restart "hermes-${servicio}.service"
+    fi
+done <<< "$HERMES_SERVICIOS"
 printf '\nHermes instalado. API local: http://127.0.0.1:%s/documentacion\n' "$HERMES_PUERTO_API"
 printf 'Estado: sudo systemctl status hermes-api\nRegistros: sudo journalctl -u hermes-telegram -f\n'
 printf 'Conserva esta carpeta: los servicios se ejecutan desde ella.\n'

@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -54,6 +54,7 @@ class Configuracion(BaseSettings):
 
     telegram_habilitado: bool = False
     token_telegram: SecretStr | None = None
+    id_propietario_telegram: int | None = Field(default=None, ge=1, le=9_223_372_036_854_775_807)
     tiempo_confirmacion_telegram_segundos: int = Field(default=60, ge=30, le=300)
     max_servidores_mostrados_telegram: int = Field(default=50, ge=1, le=100)
 
@@ -75,6 +76,17 @@ class Configuracion(BaseSettings):
     max_tareas_por_ciclo: int = Field(default=20, ge=1, le=100)
     max_concurrencia_tareas: int = Field(default=2, ge=1, le=16)
     max_intentos_notificacion_tarea: int = Field(default=3, ge=1, le=10)
+
+    @field_validator("id_propietario_telegram", mode="before")
+    @classmethod
+    def validar_id_propietario_telegram(cls, valor: object) -> object:
+        """Sin propietario configurado se inicia el canal, pero no se aceptan órdenes."""
+
+        if valor == "":
+            return None
+        if isinstance(valor, bool):
+            raise ValueError("El ID del propietario debe ser un entero positivo.")
+        return valor
 
     @model_validator(mode="after")
     def validar_configuracion_telegram(self) -> "Configuracion":
