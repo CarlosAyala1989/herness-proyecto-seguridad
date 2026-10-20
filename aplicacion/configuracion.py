@@ -58,6 +58,11 @@ class Configuracion(BaseSettings):
     tiempo_confirmacion_telegram_segundos: int = Field(default=60, ge=30, le=300)
     max_servidores_mostrados_telegram: int = Field(default=50, ge=1, le=100)
 
+    ia_habilitada: bool = False
+    ejecutable_codex: str = "codex"
+    directorio_trabajo_ia: Path = Field(default_factory=Path.home)
+    tiempo_limite_ia_segundos: int = Field(default=1800, ge=10, le=86400)
+
     slack_habilitado: bool = False
     token_bot_slack: SecretStr | None = None
     token_aplicacion_slack: SecretStr | None = None

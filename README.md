@@ -32,7 +32,9 @@ Hermes 0.14.1 proporciona:
 - doble verificación de identidad mediante `known_hosts` y huella SHA-256;
 - tiempos de espera, mantenimiento de conexión y salida acotada;
 - detección normalizada mediante adaptadores Linux y Windows Server;
-- catálogo cerrado de acciones remotas, sin ejecución arbitraria;
+- catálogo cerrado de acciones remotas administrativas;
+- modo opcional `/ia` con Codex CLI local, modelo/esfuerzo seleccionables y
+  ejecución libre sin sandbox, exclusiva del propietario administrador;
 - autorización y validación específica por acción;
 - confirmación obligatoria para reinicios;
 - resultados normalizados y auditoría por servidor;
@@ -239,6 +241,10 @@ La activación y el uso del bot se explican en
 En el chat, `/tutorial` entrega un archivo Markdown con todos los comandos,
 ejemplos y requisitos. La guía completa está en
 [`tutorial_telegram.md`](aplicacion/interfaces/telegram/recursos/tutorial_telegram.md).
+La configuración opcional de Codex CLI está en
+[`documentacion/codex_local.md`](documentacion/codex_local.md).
+La matriz de pruebas operativas y sus límites están en
+[`verificacion_comandos_2026_10_19.md`](documentacion/verificacion_comandos_2026_10_19.md).
 La creación, vinculación y uso de la aplicación Slack se explica en
 [`documentacion/slack.md`](documentacion/slack.md).
 La obtención y normalización de métricas se detalla en

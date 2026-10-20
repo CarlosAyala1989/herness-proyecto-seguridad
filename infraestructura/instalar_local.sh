@@ -92,6 +92,9 @@ done
 crear_unidad() {
     local servicio=$1
     local ejecucion=$2
+    local sin_nuevos_privilegios=true
+    # Telegram puede ejecutar Codex y sudo según los permisos locales del usuario.
+    if [[ "$servicio" == telegram ]]; then sin_nuevos_privilegios=false; fi
     cat > "$HERMES_UNIDADES/hermes-${servicio}.service" <<UNIDAD
 [Unit]
 Description=Hermes - $servicio
@@ -109,7 +112,7 @@ ExecStart=$HERMES_RUTA/.venv/bin/$ejecucion
 Restart=on-failure
 RestartSec=10
 UMask=0077
-NoNewPrivileges=true
+NoNewPrivileges=$sin_nuevos_privilegios
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

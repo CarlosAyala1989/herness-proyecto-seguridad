@@ -172,6 +172,7 @@ preparar el inventario y administrar usuarios.
 | `/inicio` | Comprueba el acceso y muestra la ayuda. |
 | `/ayuda` | Muestra las operaciones disponibles. |
 | `/tutorial` | Envía la guía completa como documento Markdown adjunto. |
+| `/ia` | Selecciona modelo/esfuerzo y ejecuta Codex CLI en el anfitrión. |
 | `/servidores` | Lista los servidores activos con botones de selección. |
 | `/grupos` | Lista los grupos con botones de selección. |
 | `/seleccionar <id>` | Selecciona un servidor mediante un entero validado. |
@@ -211,6 +212,11 @@ Solo se entrega al propietario autorizado en un chat privado y no requiere
 seleccionar un servidor ni preparar SFTP. El documento está incluido en la
 instalación y puede consultarse también en
 [`tutorial_telegram.md`](../aplicacion/interfaces/telegram/recursos/tutorial_telegram.md).
+
+La función opcional `/ia` ejecuta instrucciones libres mediante el CLI instalado,
+sin sandbox ni aprobaciones de Codex. Solo está disponible para el propietario
+con rol administrador, sobre la máquina del bot y con los permisos de la cuenta
+local. Sus requisitos y controles están en [`codex_local.md`](codex_local.md).
 
 ## Prueba segura desde Telegram
 

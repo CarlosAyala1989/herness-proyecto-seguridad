@@ -43,8 +43,10 @@ en la máquina de destino. El bot no solicita la contraseña de `sudo`.
 - Los nombres `hermes_prueba`, `operadores` y `hermes-prueba.service` son ejemplos
   de laboratorio: deben existir o prepararse cuando corresponda.
 
-Hermes interpreta comandos de su catálogo. No es una terminal remota libre:
-mensajes como `sudo apt update`, `/exec ...` o `/bash ...` no ejecutan una shell.
+Los comandos administrativos ordinarios pertenecen a un catálogo cerrado.
+La función opcional `/ia`, descrita abajo, permite que Codex ejecute instrucciones
+libres en la máquina que aloja el bot. Cuando ese modo está activo, los mensajes
+de texto se envían a Codex; usa `/ia salir` para dejar de hacerlo.
 
 ## 3. Primera sesión: consultar tu equipo
 
@@ -134,6 +136,58 @@ del propio programa y no se descarga desde los servidores del inventario.
 Solo se entrega después de comprobar el acceso del propietario. No recibe
 argumentos ni permite elegir una ruta de archivo. Si la instalación se actualiza,
 vuelve a solicitarlo para obtener la versión incluida con ese código.
+
+### /ia
+
+**Sintaxis:** `/ia`, `/ia <instrucción>`, `/ia modelos`, `/ia estado`,
+`/ia detener` y `/ia salir`.
+
+Utiliza el Codex CLI instalado y autenticado en la máquina donde corre Hermes.
+Solo el propietario con rol administrador puede usarlo y la opción debe estar
+habilitada en la configuración local. No requiere una nueva API key cuando el
+CLI ya tiene una sesión de ChatGPT válida.
+
+1. Envía `/ia` y pulsa un modelo del catálogo de tu Codex CLI.
+2. Elige uno de los esfuerzos que ese modelo admite.
+3. Envía tu instrucción con `/ia <texto>` o como mensaje normal.
+4. Recibe la respuesta en el chat; las respuestas largas llegan como
+   `respuesta_codex.md`.
+
+```text
+/ia
+```
+
+Tras elegir modelo y esfuerzo en los botones:
+
+```text
+/ia Consulta la versión de Ubuntu y el espacio libre, sin modificar archivos.
+/ia estado
+/ia detener
+/ia salir
+```
+
+Los ejemplos son mensajes separados. `/ia estado` muestra la selección de IA,
+el directorio y si hay una tarea en curso. `/ia modelos` abre otro selector.
+La selección se conserva en memoria hasta salir o reiniciar el bot. Cada
+instrucción ejecuta una tarea independiente, sin historial de conversación;
+incluye el contexto necesario en cada mensaje. Solo puede haber una tarea activa.
+
+Codex se ejecuta **sin sandbox ni aprobaciones de Codex**, con los permisos de
+la cuenta del servicio. Puede modificar archivos, ejecutar programas y usar la
+red; sus cambios no pasan por los botones de confirmación de Hermes. Este modo
+no concede root ni elimina la contraseña de `sudo`. Se ejecuta en la máquina
+del bot, independientemente de `/seleccionar`, los grupos o las raíces SFTP.
+
+`/ia detener` termina el proceso y sus hijos; no deshace cambios completados ni
+revoca trabajos que se hayan desacoplado del proceso. El plazo predeterminado
+es de 30 minutos. `/ia salir` desactiva el envío de mensajes normales a IA, pero
+no detiene por sí solo una tarea activa. `/cancelar` pertenece a las confirmaciones
+de los comandos ordinarios y tampoco interrumpe Codex.
+
+Los textos enviados a Codex se procesan con el proveedor y la sesión configurados
+en ese CLI. Hermes audita inicio, final y selección de modelo/esfuerzo, sin
+guardar instrucciones ni respuestas en MariaDB. Revisa autenticación, cuota,
+PATH de Node.js y servicio si no se puede consultar el catálogo o ejecutar una tarea.
 
 ## 5. Seleccionar qué equipos administras
 
@@ -854,10 +908,11 @@ Hermes puede entregar alertas y resultados de tareas al propietario cuando esas
 funciones están preparadas. `/diagnostico` no crea una alerta y `/cancelar` no
 cancela una tarea programada persistente.
 
-No existen comandos de Telegram para instalar paquetes, ejecutar shell libre,
-cambiar contraseñas, crear grupos del sistema, forzar sobrescrituras o consultar
-el historial completo de auditoría. La API local y la documentación del proyecto
-describen las funciones administrativas adicionales.
+El catálogo administrativo ordinario no incluye instalación de paquetes,
+shell libre, cambio de contraseñas, creación de grupos del sistema ni consulta
+completa de auditoría. `/ia` puede realizar acciones libres con los permisos
+de la cuenta local cuando está habilitado. La API y la documentación del
+proyecto describen las funciones administrativas adicionales.
 
 Para empezar con una máquina ya preparada basta con `/inicio`, elegirla en
 `/servidores` y consultar `/diagnostico`. Conserva esta guía y vuelve a pedir

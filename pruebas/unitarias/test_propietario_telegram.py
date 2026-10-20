@@ -40,7 +40,7 @@ def test_sin_propietario_no_se_infiere_ninguno(valor):
 
 @pytest.mark.parametrize("propietario", [None, 123456789])
 @pytest.mark.parametrize(
-    "operacion", ["comprobar_acceso", "consultar_servidores", "ejecutar_accion"]
+    "operacion", ["comprobar_acceso", "consultar_servidores", "ejecutar_accion", "registrar_ia"]
 )
 async def test_no_propietario_no_alcanza_permisos_ni_ssh(monkeypatch, propietario, operacion):
     sesion = AsyncMock(spec=AsyncSession)
@@ -54,6 +54,8 @@ async def test_no_propietario_no_alcanza_permisos_ni_ssh(monkeypatch, propietari
     argumentos = [987654321, 4010]
     if operacion == "ejecutar_accion":
         argumentos += [1, "obtener_identidad", SolicitudEjecucionAccion()]
+    elif operacion == "registrar_ia":
+        argumentos += ["autorizacion"]
     with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
         await getattr(gestor, operacion)(*argumentos)
     resolver.assert_not_awaited()

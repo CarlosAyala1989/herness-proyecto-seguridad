@@ -790,6 +790,155 @@ async def test_grupo_con_espacios_se_envia_sin_habilitar_cuentas_protegidas(
     }
 
 
+@pytest.mark.parametrize(
+    "metodo,argumentos,codigo,datos",
+    [
+        (
+            "iniciar_servicio",
+            ["hermes-prueba.service"],
+            CodigoAccion.INICIAR_SERVICIO,
+            {
+                "nombre_servicio": "hermes-prueba.service",
+                "estado": "activo",
+                "estado_nativo": "active",
+                "inicio_automatico": False,
+                "accion_realizada": "inicio",
+            },
+        ),
+        (
+            "detener_servicio",
+            ["hermes-prueba.service"],
+            CodigoAccion.DETENER_SERVICIO,
+            {
+                "nombre_servicio": "hermes-prueba.service",
+                "estado": "inactivo",
+                "estado_nativo": "inactive",
+                "inicio_automatico": False,
+                "accion_realizada": "detencion",
+            },
+        ),
+        (
+            "reiniciar_servicio",
+            ["hermes-prueba.service"],
+            CodigoAccion.REINICIAR_SERVICIO,
+            {
+                "nombre_servicio": "hermes-prueba.service",
+                "estado": "activo",
+                "estado_nativo": "active",
+                "inicio_automatico": False,
+                "accion_realizada": "reinicio",
+            },
+        ),
+        (
+            "crear_usuario_sistema",
+            ["hermes_prueba"],
+            CodigoAccion.CREAR_USUARIO_SISTEMA,
+            {"estado": "deshabilitado", "accion_realizada": "creacion"},
+        ),
+        (
+            "agregar_usuario_grupo",
+            ["hermes_prueba", "operadores"],
+            CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA,
+            {
+                "estado": "actualizado",
+                "accion_realizada": "cambio_grupo",
+                "nombre_grupo": "operadores",
+                "operacion_grupo": "agregar",
+            },
+        ),
+        (
+            "quitar_usuario_grupo",
+            ["hermes_prueba", "operadores"],
+            CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA,
+            {
+                "estado": "actualizado",
+                "accion_realizada": "cambio_grupo",
+                "nombre_grupo": "operadores",
+                "operacion_grupo": "quitar",
+            },
+        ),
+        (
+            "bloquear_usuario_sistema",
+            ["hermes_prueba"],
+            CodigoAccion.BLOQUEAR_USUARIO_SISTEMA,
+            {"estado": "bloqueado", "accion_realizada": "bloqueo"},
+        ),
+        (
+            "desbloquear_usuario_sistema",
+            ["hermes_prueba"],
+            CodigoAccion.DESBLOQUEAR_USUARIO_SISTEMA,
+            {"estado": "habilitado", "accion_realizada": "desbloqueo"},
+        ),
+        (
+            "eliminar_usuario_sistema",
+            ["hermes_prueba"],
+            CodigoAccion.ELIMINAR_USUARIO_SISTEMA,
+            {"estado": "eliminado", "accion_realizada": "eliminacion"},
+        ),
+        (
+            "solicitar_reinicio",
+            [],
+            CodigoAccion.REINICIAR_SERVIDOR,
+            {"reinicio_programado": True, "demora_segundos": 60},
+        ),
+    ],
+)
+async def test_cada_comando_sensible_solo_ejecuta_tras_confirmar_y_no_repite(
+    interfaz_telegram, metodo, argumentos, codigo, datos
+):
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_accion_sensible.return_value = _servidor()
+    datos_usuario = {
+        "nombre_usuario": "hermes_prueba",
+        "cuenta_protegida": False,
+        "nombre_grupo": None,
+        "operacion_grupo": None,
+    }
+    gestor.ejecutar_accion.return_value = _resultado(codigo).model_copy(
+        update={"datos": {**datos_usuario, **datos}}
+    )
+    mensaje = MensajeSimulado()
+    contexto = _contexto(*argumentos)
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+
+    await getattr(interfaz, metodo)(_actualizacion(mensaje), contexto)
+    gestor.ejecutar_accion.assert_not_awaited()
+    boton = mensaje.respuestas[-1][1].inline_keyboard[0][0].callback_data
+    actualizacion = _actualizacion(mensaje, consulta=ConsultaBotonSimulada(boton))
+    await interfaz.resolver_accion_sensible(actualizacion, contexto)
+
+    assert gestor.ejecutar_accion.await_args.args[3] == codigo.value
+    assert gestor.ejecutar_accion.await_args.args[4].confirmar is True
+    await interfaz.resolver_accion_sensible(actualizacion, contexto)
+    assert gestor.ejecutar_accion.await_count == 1
+
+
+async def test_cancelar_anula_confirmacion_y_proceso_valido_se_consulta(interfaz_telegram):
+    interfaz, gestor = interfaz_telegram
+    gestor.comprobar_acceso.return_value = "Administrador"
+    gestor.comprobar_accion_sensible.return_value = _servidor()
+    mensaje = MensajeSimulado()
+    contexto = _contexto("hermes-prueba.service")
+    contexto.user_data[CLAVE_SERVIDOR_SELECCIONADO] = 7
+    await interfaz.iniciar_servicio(_actualizacion(mensaje), contexto)
+    boton = mensaje.respuestas[-1][1].inline_keyboard[0][0].callback_data
+    await interfaz.cancelar(_actualizacion(mensaje), _contexto_con_datos(contexto))
+    await interfaz.resolver_accion_sensible(
+        _actualizacion(mensaje, consulta=ConsultaBotonSimulada(boton)), contexto
+    )
+    gestor.ejecutar_accion.assert_not_awaited()
+    contexto.args = ["1"]
+    gestor.ejecutar_accion.return_value = _resultado(CodigoAccion.CONSULTAR_PROCESO)
+    await interfaz.consultar_proceso(_actualizacion(mensaje), contexto)
+    assert gestor.ejecutar_accion.await_args.args[4].parametros == {"id_proceso": 1}
+    assert "systemd" in mensaje.respuestas[-1][0]
+
+
+def _contexto_con_datos(contexto):
+    return SimpleNamespace(args=[], user_data=contexto.user_data)
+
+
 def test_configuracion_protege_y_exige_token_telegram() -> None:
     with pytest.raises(ValidationError):
         Configuracion(

@@ -192,6 +192,25 @@ def test_ciclo_real_de_usuario_en_ubuntu_24_04(
     assert cuenta["estado"] == "habilitado"
     assert "operadores" in cuenta["grupos"]
 
+    retirada = _ejecutar_accion(
+        ruta_docker,
+        nombre_contenedor,
+        CodigoAccion.CAMBIAR_GRUPO_USUARIO_SISTEMA,
+        ParametrosCambioGrupoUsuarioSistema(
+            nombre_usuario="hermes_h12",
+            nombre_grupo="operadores",
+            operacion_grupo="quitar",
+        ),
+    )
+    assert retirada["operacion_grupo"] == "quitar"
+    listado_sin_grupo = _ejecutar_accion(
+        ruta_docker, nombre_contenedor, CodigoAccion.LISTAR_USUARIOS_SISTEMA, ParametrosSinCampos()
+    )
+    cuenta = next(
+        item for item in listado_sin_grupo["usuarios"] if item["nombre_usuario"] == "hermes_h12"
+    )
+    assert "operadores" not in cuenta["grupos"]
+
     eliminacion = _ejecutar_accion(
         ruta_docker,
         nombre_contenedor,

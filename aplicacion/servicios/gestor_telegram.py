@@ -3,7 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aplicacion.configuracion import Configuracion
-from aplicacion.errores import ErrorIdentidadMensajeriaNoAutorizada
+from aplicacion.errores import ErrorIdentidadMensajeriaNoAutorizada, ErrorPermisoDenegado
 from aplicacion.modelos.acceso import Usuario
 from aplicacion.modelos.enumeraciones import (
     CanalAuditoria,
@@ -34,6 +34,40 @@ class GestorTelegram(GestorMensajeria):
             "tg",
             configuracion.max_servidores_mostrados_telegram,
         )
+
+    async def registrar_ia(
+        self,
+        identificador_externo: int,
+        identificador_evento: int,
+        estado: str,
+        modelo: str = "",
+        esfuerzo: str = "",
+    ) -> None:
+        """Reautoriza al propietario administrador y audita sin prompts ni respuestas."""
+        contexto = self.crear_contexto(identificador_externo, identificador_evento)
+        async with self._fabrica_sesiones() as sesion:
+            usuario = await self._autenticar(sesion, identificador_externo, contexto)
+            administrador = any(rol.nombre == "administrador" for rol in usuario.roles)
+            preparar_registro_auditoria(
+                sesion,
+                usuario=usuario,
+                accion="codex_ia",
+                tipo_recurso=TipoRecursoAuditoria.APLICACION,
+                resultado=(
+                    (ResultadoAuditoria.ERROR if estado == "error" else ResultadoAuditoria.EXITO)
+                    if administrador
+                    else ResultadoAuditoria.DENEGADO
+                ),
+                detalle=(
+                    f"Estado={estado[:30]}; modelo={modelo[:100]}; esfuerzo={esfuerzo[:20]}."
+                    if administrador
+                    else "IA requiere el rol administrador."
+                ),
+                contexto=contexto,
+            )
+            await sesion.commit()
+            if not administrador:
+                raise ErrorPermisoDenegado("administrador_ia")
 
     async def _autenticar(
         self,

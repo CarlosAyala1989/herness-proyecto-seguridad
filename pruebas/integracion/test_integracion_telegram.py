@@ -111,6 +111,34 @@ class ContextoTelegramIntegracion:
     primer_registro_auditoria: int
 
 
+@pytest.mark.integracion
+async def test_ia_exige_propietario_y_rol_administrador_vigente(contexto_telegram_integracion):
+    contexto = contexto_telegram_integracion
+    await contexto.gestor.registrar_ia(
+        contexto.identificador_autorizado, 90001, "iniciada", "modelo-prueba", "low"
+    )
+    with pytest.raises(ErrorIdentidadMensajeriaNoAutorizada):
+        await contexto.gestor.registrar_ia(799999998, 90002, "autorizacion")
+    async with contexto.fabrica_sesiones() as sesion:
+        usuario = await sesion.scalar(
+            select(Usuario).where(Usuario.nombre_usuario == f"{contexto.prefijo}-usuario")
+        )
+        usuario.roles = []
+        await sesion.commit()
+    with pytest.raises(ErrorPermisoDenegado):
+        await contexto.gestor.registrar_ia(contexto.identificador_autorizado, 90003, "autorizacion")
+    async with contexto.fabrica_sesiones() as sesion:
+        registros = (
+            await sesion.scalars(
+                select(RegistroAuditoria).where(RegistroAuditoria.accion == "codex_ia")
+            )
+        ).all()
+        assert any(
+            "modelo=modelo-prueba; esfuerzo=low" in registro.detalle for registro in registros
+        )
+        assert any(registro.resultado.value == "denegado" for registro in registros)
+
+
 @pytest.fixture
 async def contexto_telegram_integracion() -> AsyncIterator[ContextoTelegramIntegracion]:
     configuracion = Configuracion()  # type: ignore[call-arg]

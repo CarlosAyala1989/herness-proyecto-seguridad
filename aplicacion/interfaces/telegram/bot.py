@@ -40,6 +40,7 @@ from aplicacion.interfaces.formateo_usuarios import (
     formatear_listado_usuarios,
     formatear_mutacion_usuario,
 )
+from aplicacion.interfaces.telegram.ia import InterfazIATelegram
 from aplicacion.modelos.enumeraciones import SistemaOperativo
 from aplicacion.servicios.gestor_telegram import GestorTelegram
 
@@ -84,6 +85,7 @@ COMANDOS_TELEGRAM = (
     BotCommand("inicio", "Iniciar Hermes y comprobar autorización"),
     BotCommand("ayuda", "Mostrar los comandos disponibles"),
     BotCommand("tutorial", "Descargar el tutorial completo en Markdown"),
+    BotCommand("ia", "Elegir modelo y esfuerzo de Codex CLI local"),
     BotCommand("servidores", "Listar y seleccionar un servidor"),
     BotCommand("grupos", "Listar y seleccionar un grupo"),
     BotCommand("seleccionar", "Seleccionar un servidor por identificador"),
@@ -130,11 +132,13 @@ class InterfazTelegram(CanalMensajeria):
         self._motor_base_datos = motor_base_datos
         self._aplicacion: Application | None = None
         self._solicitudes_recientes: dict[int, deque[float]] = {}
+        self._ia = InterfazIATelegram(gestor, configuracion, self._autorizar)
 
     def registrar(self, aplicacion: Application) -> None:
         """Registra todos los comandos antes de iniciar el sondeo."""
 
         self._aplicacion = aplicacion
+        self._ia.registrar(aplicacion)
         aplicacion.add_handler(CommandHandler(["inicio", "start"], self.iniciar))
         aplicacion.add_handler(CommandHandler("ayuda", self.mostrar_ayuda))
         aplicacion.add_handler(CommandHandler("tutorial", self.enviar_tutorial))
@@ -211,6 +215,7 @@ class InterfazTelegram(CanalMensajeria):
     async def cerrar(self, _: Application) -> None:
         """Libera el motor compartido cuando finaliza el proceso del bot."""
 
+        await self._ia.cerrar()
         await self._motor_base_datos.dispose()
         registrador.info("Interfaz Telegram detenida y conexiones liberadas.")
 
@@ -307,6 +312,7 @@ class InterfazTelegram(CanalMensajeria):
         return (
             "Comandos disponibles:\n"
             "/tutorial — descargar la guía completa con ejemplos (.md)\n"
+            "/ia — ejecutar Codex CLI local con modelo y esfuerzo elegidos\n"
             "/servidores — listar y elegir un servidor\n"
             "/grupos — listar y elegir un grupo\n"
             "/seleccionar <id> — elegir un servidor\n"
